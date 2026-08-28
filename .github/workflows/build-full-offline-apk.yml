@@ -25,6 +25,23 @@ jobs:
           sed -i '1i import java.util.Properties' app/build.gradle.kts
           sed -i 's/java\.util\.Properties()/Properties()/' app/build.gradle.kts
 
+          # Keep Java and Kotlin/KAPT on the same JVM target.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle.kts")
+          s = p.read_text()
+          needle = "    compileSdk = 35\n"
+          replacement = """    compileSdk = 35
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+"""
+          assert needle in s, "compileSdk anchor not found"
+          p.write_text(s.replace(needle, replacement, 1))
+          PY
+
           # Use a pure-vector launcher foreground so the build has no binary icon dependency.
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
@@ -115,6 +132,10 @@ jobs:
           unzip -l "$APK" | grep 'assets/models/shenava_v10_ctc/tokens.txt'
           MODEL_IN_APK=$(unzip -l "$APK" | awk '/assets\/models\/shenava_v10_ctc\/model.onnx/{print $1}')
           test "$MODEL_IN_APK" -gt 450000000
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | tee /tmp/apk-permissions.txt
+          grep -q 'android.permission.RECORD_AUDIO' /tmp/apk-permissions.txt
+          ! grep -q 'android.permission.INTERNET' /tmp/apk-permissions.txt
           cp "$APK" Emrooz-Final-Full-Offline.apk
           sha256sum Emrooz-Final-Full-Offline.apk | tee Emrooz-Final-Full-Offline.apk.sha256
 
