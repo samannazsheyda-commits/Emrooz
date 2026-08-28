@@ -21,6 +21,10 @@ jobs:
           cat payload/source.part00 payload/source.part01 | base64 -d > /tmp/emrooz-source.tar.gz
           tar -xzf /tmp/emrooz-source.tar.gz -C .
 
+          # Gradle Kotlin DSL can expose an Android 'java' accessor that shadows java.util.
+          sed -i '1i import java.util.Properties' app/build.gradle.kts
+          sed -i 's/java\.util\.Properties()/Properties()/' app/build.gradle.kts
+
           # Use a pure-vector launcher foreground so the build has no binary icon dependency.
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
