@@ -26,6 +26,7 @@ jobs:
           sed -i 's/androidx.room:room-ktx:2\.6\.1/androidx.room:room-ktx:2.7.2/' app/build.gradle.kts
           sed -i 's/androidx.room:room-compiler:2\.6\.1/androidx.room:room-compiler:2.7.2/' app/build.gradle.kts
           python3 -c 'from pathlib import Path; p=Path("app/build.gradle.kts"); s=p.read_text(); n="    compileSdk = 35\n"; r=n+"\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }\n"; assert n in s; p.write_text(s.replace(n,r,1))'
+          python3 -c 'from pathlib import Path; p=Path("app/src/main/AndroidManifest.xml"); s=p.read_text(); old="<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">"; new="<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    xmlns:tools=\"http://schemas.android.com/tools\">"; assert old in s; s=s.replace(old,new,1); marker="        <activity\n"; provider="        <provider\n            android:name=\"androidx.startup.InitializationProvider\"\n            android:authorities=\"${applicationId}.androidx-startup\"\n            tools:node=\"merge\">\n            <meta-data\n                android:name=\"androidx.work.WorkManagerInitializer\"\n                android:value=\"androidx.startup\"\n                tools:node=\"remove\" />\n        </provider>\n\n"; assert marker in s; s=s.replace(marker,provider+marker,1); p.write_text(s)'
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -42,6 +43,8 @@ jobs:
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
           grep -q 'room-compiler:2.7.2' app/build.gradle.kts
+          grep -q 'androidx.work.WorkManagerInitializer' app/src/main/AndroidManifest.xml
+          grep -q 'tools:node="remove"' app/src/main/AndroidManifest.xml
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
