@@ -1,10 +1,146 @@
-name: Build Emrooz Full Offline APK
+name: Build Emrooz Final v1.1.0 INT8
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'payload/v110.part*'
+      - '.github/workflows/build-full-offline-apk.yml'
 
 jobs:
-  hold:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
     steps:
-      - run: echo "Workflow paused while final v1.1.0 source is staged"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct final Android source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
+          echo "3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/emrooz-source.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/emrooz-source.tar.gz -C .
+          test -f settings.gradle.kts
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt
+          test -f app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          test -f app/src/main/java/com/nameemrooz/journal/util/PersianText.kt
+          test -f app/src/main/res/drawable-nodpi/ic_launcher_foreground_png.png
+          grep -q 'versionName = "1.1.0"' app/build.gradle.kts
+          grep -q 'arm64-v8a' app/build.gradle.kts
+          grep -q 'دلت خوش آ' app/src/main/java/com/nameemrooz/journal/util/PersianText.kt
+          echo "f66666a180f7c12d330d495e338f067f42c6bd245d2528c11a002b972278f679  app/src/main/res/drawable-nodpi/ic_launcher_foreground_png.png" | sha256sum -c -
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Generate release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../signing
+          keytool -genkeypair -v \
+            -keystore ../signing/emrooz-release.jks \
+            -storepass Emrooz2026Release \
+            -alias emrooz \
+            -keypass Emrooz2026Release \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Emrooz, OU=Android, O=Emrooz, C=IR"
+          test -f ../signing/emrooz-release.jks
+
+      - name: Download pinned INT8 Shenava model
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL_DIR="app/src/main/assets/models/shenava_v10_ctc"
+          mkdir -p "$MODEL_DIR"
+          MODEL_URL="https://huggingface.co/mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-streaming-int8-2026-06-26/resolve/ae7a6e0f530d30f3a110e26724dca4efce01a85e/model.int8.onnx?download=true"
+          TOKENS_URL="https://huggingface.co/mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-streaming-int8-2026-06-26/resolve/ae7a6e0f530d30f3a110e26724dca4efce01a85e/tokens.txt?download=true"
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -H "User-Agent: Mozilla/5.0" -o "$MODEL_DIR/model.onnx" "$MODEL_URL"
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -H "User-Agent: Mozilla/5.0" -o "$MODEL_DIR/tokens.txt" "$TOKENS_URL"
+          MODEL_BYTES=$(stat -c%s "$MODEL_DIR/model.onnx")
+          test "$MODEL_BYTES" -gt 100000000
+          test "$MODEL_BYTES" -lt 200000000
+          test -s "$MODEL_DIR/tokens.txt"
+          echo "INT8 model bytes: $MODEL_BYTES"
+          sha256sum "$MODEL_DIR/model.onnx" | tee model.sha256
+          sha256sum "$MODEL_DIR/tokens.txt" | tee tokens.sha256
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:testReleaseUnitTest
+
+      - name: Build signed release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Verify final APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -f "$APK"
+          unzip -t "$APK"
+          unzip -l "$APK" | grep 'assets/models/shenava_v10_ctc/model.onnx'
+          unzip -l "$APK" | grep 'assets/models/shenava_v10_ctc/tokens.txt'
+          MODEL_IN_APK=$(unzip -l "$APK" | awk '/assets\/models\/shenava_v10_ctc\/model.onnx/{print $1}')
+          test "$MODEL_IN_APK" -gt 100000000
+          test "$MODEL_IN_APK" -lt 200000000
+          unzip -l "$APK" | grep 'lib/arm64-v8a/'
+          if unzip -l "$APK" | grep -Eq 'lib/(armeabi-v7a|x86|x86_64)/'; then
+            echo "Unexpected non-arm64 native libraries found" >&2
+            exit 1
+          fi
+          unzip -l "$APK" | grep 'res/drawable-nodpi-v4/ic_launcher_foreground_png.png' || true
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | tee /tmp/apk-permissions.txt
+          grep -q 'android.permission.RECORD_AUDIO' /tmp/apk-permissions.txt
+          if grep -q 'android.permission.INTERNET' /tmp/apk-permissions.txt; then
+            echo "INTERNET permission must not exist" >&2
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionName='1.1.0'" /tmp/badging.txt
+          cp "$APK" Emrooz-Final-v1.1.0-INT8.apk
+          sha256sum Emrooz-Final-v1.1.0-INT8.apk | tee Emrooz-Final-v1.1.0-INT8.apk.sha256
+          ls -lh Emrooz-Final-v1.1.0-INT8.apk
+
+      - name: Upload final APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-Final-v1.1.0-INT8
+          path: |
+            Emrooz-Final-v1.1.0-INT8.apk
+            Emrooz-Final-v1.1.0-INT8.apk.sha256
+            model.sha256
+            tokens.sha256
+          compression-level: 0
+          retention-days: 30
