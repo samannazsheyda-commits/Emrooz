@@ -1,0 +1,71 @@
+name: Split Verified Emrooz APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/split-existing-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  split:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_ARTIFACT_ID: '9700136196'
+    steps:
+      - name: Download verified APK artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o /tmp/emrooz-artifact.zip \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip"
+          mkdir artifact
+          unzip -q /tmp/emrooz-artifact.zip -d artifact
+          cd artifact
+          sha256sum -c Emrooz-Final-Full-Offline.apk.sha256
+          test "$(stat -c%s Emrooz-Final-Full-Offline.apk)" -gt 550000000
+          split -b 200M -d -a 2 Emrooz-Final-Full-Offline.apk Emrooz-Final-Full-Offline.apk.part
+          sha256sum Emrooz-Final-Full-Offline.apk.part* > parts.sha256
+          ls -lh Emrooz-Final-Full-Offline.apk.part*
+
+      - name: Upload part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-APK-Part-00
+          path: artifact/Emrooz-Final-Full-Offline.apk.part00
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-APK-Part-01
+          path: artifact/Emrooz-Final-Full-Offline.apk.part01
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-APK-Part-02
+          path: artifact/Emrooz-Final-Full-Offline.apk.part02
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-APK-Checksums
+          path: |
+            artifact/Emrooz-Final-Full-Offline.apk.sha256
+            artifact/parts.sha256
+          retention-days: 7
