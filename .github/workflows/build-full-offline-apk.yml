@@ -20,29 +20,9 @@ jobs:
           set -euo pipefail
           cat payload/source.part00 payload/source.part01 | base64 -d > /tmp/emrooz-source.tar.gz
           tar -xzf /tmp/emrooz-source.tar.gz -C .
-
-          # Gradle Kotlin DSL can expose an Android 'java' accessor that shadows java.util.
           sed -i '1i import java.util.Properties' app/build.gradle.kts
           sed -i 's/java\.util\.Properties()/Properties()/' app/build.gradle.kts
-
-          # Keep Java and Kotlin/KAPT on the same JVM target.
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("app/build.gradle.kts")
-          s = p.read_text()
-          needle = "    compileSdk = 35\n"
-          replacement = """    compileSdk = 35
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-"""
-          assert needle in s, "compileSdk anchor not found"
-          p.write_text(s.replace(needle, replacement, 1))
-          PY
-
-          # Use a pure-vector launcher foreground so the build has no binary icon dependency.
+          python3 -c 'from pathlib import Path; p=Path("app/build.gradle.kts"); s=p.read_text(); n="    compileSdk = 35\n"; r=n+"\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }\n"; assert n in s; p.write_text(s.replace(n,r,1))'
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -55,7 +35,6 @@ jobs:
                   android:pathData="M27,43h54v8H27zM34,57h40v7H34zM42,70h24v6H42z" />
           </vector>
           EOF
-
           test -f settings.gradle.kts
           test -f app/build.gradle.kts
           test -f app/src/main/AndroidManifest.xml
@@ -104,12 +83,8 @@ jobs:
           mkdir -p "$MODEL_DIR"
           MODEL_URL="https://huggingface.co/Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx/resolve/f063f38cb38fe02df39887ac65c441b755ab25a2/model.onnx?download=true"
           TOKENS_URL="https://huggingface.co/Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx/resolve/f063f38cb38fe02df39887ac65c441b755ab25a2/tokens.txt?download=true"
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 \
-            -H "User-Agent: Mozilla/5.0" \
-            -o "$MODEL_DIR/model.onnx" "$MODEL_URL"
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 \
-            -H "User-Agent: Mozilla/5.0" \
-            -o "$MODEL_DIR/tokens.txt" "$TOKENS_URL"
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -H "User-Agent: Mozilla/5.0" -o "$MODEL_DIR/model.onnx" "$MODEL_URL"
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -H "User-Agent: Mozilla/5.0" -o "$MODEL_DIR/tokens.txt" "$TOKENS_URL"
           echo "6a564b5541920ce1c37bbc91d22e4b3a6838648b9b327eb88997e8db1f90950d  $MODEL_DIR/model.onnx" | sha256sum -c -
           test "$(stat -c%s "$MODEL_DIR/model.onnx")" -gt 450000000
           echo "Model bytes: $(stat -c%s "$MODEL_DIR/model.onnx")"
