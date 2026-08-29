@@ -51,7 +51,7 @@ jobs:
           grep -q 'در حال تبدیل صدا به متن' "$UI"
           grep -q 'vazirmatn_semibold' "$UI"
           grep -q 'PersianNameCorrector' app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
-          grep -q 'SpeechTuning.READ_BUFFER_SHORTS' app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          grep -q 'SpeechTuning.READ_SAMPLES' app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
           grep -q 'FloatArray(1600)' app/src/main/java/com/nameemrooz/journal/speech/ShenavaRecognizer.kt
 
       - name: Bundle pinned Persian fonts and offline name lexicon
