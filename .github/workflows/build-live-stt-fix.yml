@@ -33,6 +33,9 @@ jobs:
           sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
           sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
           if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_ui_patch.py
+          grep -q 'transcriptionGlow' "$UI"
+          grep -q 'در حال تبدیل صدا به متن' "$UI"
           sed -i 's/versionCode = 13/versionCode = 14/' app/build.gradle.kts || true
           sed -i 's/versionName = "1.1.0"/versionName = "1.1.1"/' app/build.gradle.kts
           grep -q 'versionName = "1.1.1"' app/build.gradle.kts
