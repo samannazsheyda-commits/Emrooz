@@ -24,14 +24,12 @@ jobs:
           cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
           echo "3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/emrooz-source.tar.gz" | sha256sum -c -
           tar -xzf /tmp/emrooz-source.tar.gz -C .
-
           UI="app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt"
           sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
           sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
           if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
           python3 fixes/apply_text_patch.py
           python3 fixes/apply_ui_patch.py
-
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -42,7 +40,6 @@ jobs:
           if n1 != 1 or n2 != 1:
               raise SystemExit(f'version patch failed: code={n1}, name={n2}')
           p.write_text(s, encoding='utf-8')
-
           checks = {
               'package id': ('app/build.gradle.kts', 'com.nameemrooz.journal.final'),
               'version code': ('app/build.gradle.kts', 'versionCode = 16'),
@@ -68,24 +65,11 @@ jobs:
           FONT_DIR="app/src/main/res/font"
           LEX_DIR="app/src/main/assets/lexicon"
           mkdir -p "$FONT_DIR" "$LEX_DIR"
-
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 \
-            -o "$FONT_DIR/noto_naskh_arabic.ttf" \
-            'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 \
-            -o "$FONT_DIR/vazirmatn_regular.ttf" \
-            'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 \
-            -o "$FONT_DIR/vazirmatn_semibold.ttf" \
-            'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
-
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 \
-            -o /tmp/persian_first_names.json \
-            'https://raw.githubusercontent.com/nabidam/persian-names/68f5cb39a25c19ecaf6f60f3181aea200f8206f8/names.json'
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 \
-            -o /tmp/persian_surnames.csv \
-            'https://raw.githubusercontent.com/farbodbj/iranian-surname-frequencies/9fb2fdccb62445b52e933d4d7929a52e01bd6011/iranian-surname-frequencies.csv'
-
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FONT_DIR/noto_naskh_arabic.ttf" 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FONT_DIR/vazirmatn_regular.ttf" 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FONT_DIR/vazirmatn_semibold.ttf" 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o /tmp/persian_first_names.json 'https://raw.githubusercontent.com/nabidam/persian-names/68f5cb39a25c19ecaf6f60f3181aea200f8206f8/names.json'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o /tmp/persian_surnames.csv 'https://raw.githubusercontent.com/farbodbj/iranian-surname-frequencies/9fb2fdccb62445b52e933d4d7929a52e01bd6011/iranian-surname-frequencies.csv'
           python3 - <<'PY'
           import csv, json
           from pathlib import Path
@@ -110,7 +94,6 @@ jobs:
               for name, score in sorted(surnames.items()):
                   f.write(f'{name}\t{score}\n')
           PY
-
           test -s "$FONT_DIR/noto_naskh_arabic.ttf"
           test -s "$FONT_DIR/vazirmatn_regular.ttf"
           test -s "$FONT_DIR/vazirmatn_semibold.ttf"
@@ -142,13 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ../signing
-          keytool -genkeypair -v \
-            -keystore ../signing/emrooz-release.jks \
-            -storepass Emrooz2026Release \
-            -alias emrooz \
-            -keypass Emrooz2026Release \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Emrooz, OU=Android, O=Emrooz, C=IR"
+          keytool -genkeypair -v -keystore ../signing/emrooz-release.jks -storepass Emrooz2026Release -alias emrooz -keypass Emrooz2026Release -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Emrooz, OU=Android, O=Emrooz, C=IR"
 
       - name: Download exact pinned streaming INT8 Persian model
         shell: bash
@@ -183,22 +160,21 @@ jobs:
           unzip -l "$APK" | grep 'assets/lexicon/persian_first_names.txt'
           unzip -l "$APK" | grep 'assets/lexicon/persian_surnames.tsv'
           unzip -l "$APK" | grep 'lib/arm64-v8a/libsherpa-onnx-jni.so'
-          unzip -l "$APK" | grep 'res/font'
           unzip -p "$APK" assets/models/shenava_v10_ctc/model.onnx > /tmp/model.onnx
           echo "439983c95ab83c55c841e0795ba3a61d56718ec5c972a3a208548b93470b04b1  /tmp/model.onnx" | sha256sum -c -
-
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump resources "$APK" > /tmp/resources.txt
+          grep -q 'font/noto_naskh_arabic' /tmp/resources.txt
+          grep -q 'font/vazirmatn_regular' /tmp/resources.txt
+          grep -q 'font/vazirmatn_semibold' /tmp/resources.txt
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/signature.txt
-
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | tee /tmp/perms.txt
           grep -q 'android.permission.RECORD_AUDIO' /tmp/perms.txt
           ! grep -q 'android.permission.INTERNET' /tmp/perms.txt
-
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='com.nameemrooz.journal.final'" /tmp/badging.txt
           grep -q "versionCode='16'" /tmp/badging.txt
           grep -q "versionName='1.1.3'" /tmp/badging.txt
-
           cp "$APK" Emrooz-Final-v1.1.3.apk
           sha256sum Emrooz-Final-v1.1.3.apk | tee Emrooz-Final-v1.1.3.apk.sha256
 
