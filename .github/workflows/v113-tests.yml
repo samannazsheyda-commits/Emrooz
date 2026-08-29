@@ -1,0 +1,58 @@
+name: Test Emrooz v1.1.3
+
+on:
+  push:
+    branches: [ feat/final-ui-stt-v113 ]
+    paths:
+      - 'fixes/**'
+      - '.github/workflows/v113-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct source and overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
+          echo "3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/emrooz-source.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/emrooz-source.tar.gz -C .
+          UI="app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_ui_patch.py
+
+      - name: Bundle compile-time Persian fonts
+        shell: bash
+        run: |
+          set -euo pipefail
+          FONT_DIR="app/src/main/res/font"
+          mkdir -p "$FONT_DIR"
+          curl -L --fail --retry 5 --retry-all-errors -o "$FONT_DIR/noto_naskh_arabic.ttf" 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          curl -L --fail --retry 5 --retry-all-errors -o "$FONT_DIR/vazirmatn_regular.ttf" 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 5 --retry-all-errors -o "$FONT_DIR/vazirmatn_semibold.ttf" 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Run release unit tests
+        shell: bash
+        run: gradle --no-daemon --stacktrace :app:testReleaseUnitTest
