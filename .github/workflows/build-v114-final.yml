@@ -1,0 +1,226 @@
+name: Build Emrooz v1.1.4 Rebuild
+
+on:
+  push:
+    branches: [fix/final-v114-rebuild]
+    paths:
+      - 'payload/v114.part*'
+      - '.github/workflows/build-v114-final.yml'
+  workflow_dispatch:
+
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact baseline and apply proven v1.1.3 fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
+          echo "3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/emrooz-source.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/emrooz-source.tar.gz -C .
+          UI="app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+
+      - name: Overlay v1.1.4 rebuilt UI speech and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v114.part* | base64 -d > /tmp/v114-overlay.tgz
+          echo "a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114-overlay.tgz" | sha256sum -c -
+          tar -xzf /tmp/v114-overlay.tgz -C .
+          grep -q 'AppTheme.LIGHT' app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt
+          grep -q 'ShenavaOfflineRecognizer' app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          grep -q 'finalizerOverflow' app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+
+      - name: Set unique install-safe package and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('app/build.gradle.kts')
+          s = p.read_text(encoding='utf-8')
+          new_id = 'com.nameemrooz.journal.rebuild114'
+          s, n0 = re.subn(r'applicationId\s*=\s*"[^"]+"', f'applicationId = "{new_id}"', s, count=1)
+          s, n1 = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 17', s, count=1)
+          s, n2 = re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "1.1.4"', s, count=1)
+          if (n0, n1, n2) != (1, 1, 1):
+              raise SystemExit(f'build config patch failed: {(n0,n1,n2)}')
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Bundle open-source runtime fonts and offline name lexicon
+        shell: bash
+        run: |
+          set -euo pipefail
+          FONT_DIR="app/src/main/res/font"
+          LEX_DIR="app/src/main/assets/lexicon"
+          mkdir -p "$FONT_DIR" "$LEX_DIR"
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FONT_DIR/noto_naskh_arabic.ttf" 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FONT_DIR/vazirmatn_regular.ttf" 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FONT_DIR/vazirmatn_semibold.ttf" 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o /tmp/persian_first_names.json 'https://raw.githubusercontent.com/nabidam/persian-names/68f5cb39a25c19ecaf6f60f3181aea200f8206f8/names.json'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o /tmp/persian_surnames.csv 'https://raw.githubusercontent.com/farbodbj/iranian-surname-frequencies/9fb2fdccb62445b52e933d4d7929a52e01bd6011/iranian-surname-frequencies.csv'
+          python3 - <<'PY'
+          import csv, json
+          from pathlib import Path
+          def norm(value):
+              return (value or '').strip().replace('ي','ی').replace('ى','ی').replace('ك','ک').replace('ة','ه')
+          lex = Path('app/src/main/assets/lexicon')
+          data = json.loads(Path('/tmp/persian_first_names.json').read_text(encoding='utf-8-sig'))
+          first_names = {norm(k) for k in data.keys() if norm(k)}
+          first_names.add('سهیل')
+          (lex/'persian_first_names.txt').write_text('\n'.join(sorted(first_names))+'\n', encoding='utf-8')
+          surnames = {}
+          with open('/tmp/persian_surnames.csv', encoding='utf-8-sig', newline='') as f:
+              for row in csv.DictReader(f):
+                  name = norm(row.get('name',''))
+                  if not name: continue
+                  try: freq = float(row.get('frequency',0) or 0)
+                  except ValueError: freq = 0.0
+                  score = max(1, int(round(freq * 1_000_000_000)))
+                  surnames[name] = max(surnames.get(name,0), score)
+          surnames['ممدوحی'] = max(surnames.get('ممدوحی',0), 1)
+          with (lex/'persian_surnames.tsv').open('w', encoding='utf-8') as f:
+              for name, score in sorted(surnames.items()):
+                  f.write(f'{name}\t{score}\n')
+          PY
+          test "$(wc -l < "$LEX_DIR/persian_first_names.txt")" -gt 1000
+          test "$(wc -l < "$LEX_DIR/persian_surnames.tsv")" -gt 50000
+
+      - name: Download and pin both Persian ASR models
+        shell: bash
+        run: |
+          set -euo pipefail
+          STREAM_DIR="app/src/main/assets/models/shenava_v10_ctc"
+          FINAL_DIR="app/src/main/assets/models/shenava_v10_ctc_offline"
+          mkdir -p "$STREAM_DIR" "$FINAL_DIR"
+          STREAM_BASE='https://huggingface.co/mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-streaming-int8-2026-06-26/resolve/ae7a6e0f530d30f3a110e26724dca4efce01a85e'
+          FINAL_BASE='https://huggingface.co/mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-non-streaming-int8-2026-06-26/resolve/main'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$STREAM_DIR/model.onnx" "$STREAM_BASE/model.int8.onnx?download=true"
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$STREAM_DIR/tokens.txt" "$STREAM_BASE/tokens.txt?download=true"
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FINAL_DIR/model.onnx" "$FINAL_BASE/model.int8.onnx?download=true"
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FINAL_DIR/tokens.txt" "$FINAL_BASE/tokens.txt?download=true"
+          echo "439983c95ab83c55c841e0795ba3a61d56718ec5c972a3a208548b93470b04b1  $STREAM_DIR/model.onnx" | sha256sum -c -
+          echo "9d487fc2aa8cdb742a6e2f000be4c25e6b620faf73c9a335fdb310cc7879182e  $FINAL_DIR/model.onnx" | sha256sum -c -
+          echo "8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  $FINAL_DIR/tokens.txt" | sha256sum -c -
+
+      - name: Static design privacy and speech invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          SPEECH='app/src/main/java/com/nameemrooz/journal/speech'
+          grep -q 'heading_from_today' "$UI"
+          grep -q 'heading_today_letter' "$UI"
+          grep -q 'emrooz_logo' "$UI"
+          grep -q 'هر چیزی که بگی مهمه' "$UI"
+          grep -q 'بگو، حتی چیزهای کوچیک هم مهم هستن' "$UI"
+          grep -q 'BasicTextField' "$UI"
+          grep -q 'ذخیره نامه' "$UI"
+          grep -q 'دارم متن رو دقیق‌تر می‌کنم' "$UI"
+          grep -q 'AppTheme.LIGHT' "$UI"
+          ! grep -qiE 'waveform|equalizer|leaf|برگ' "$UI"
+          grep -q 'AudioRecord' "$SPEECH/LiveSpeechEngine.kt"
+          grep -q 'MediaRecorder.AudioSource.VOICE_RECOGNITION' "$SPEECH/LiveSpeechEngine.kt"
+          grep -q 'ShenavaOfflineRecognizer' "$SPEECH/LiveSpeechEngine.kt"
+          grep -q 'FinalTranscriptSelector' "$SPEECH/LiveSpeechEngine.kt"
+          grep -q 'finalizerOverflow' "$SPEECH/LiveSpeechEngine.kt"
+          ! grep -RqiE 'FileOutputStream|setOutputFile|\.wav|MediaRecorder\(' "$SPEECH"
+          grep -q 'const val SAMPLE_RATE = 16_000' "$SPEECH/SpeechTuning.kt"
+          grep -q 'const val READ_SAMPLES = 2_048' "$SPEECH/SpeechTuning.kt"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Generate install-safe release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../signing
+          keytool -genkeypair -v -keystore ../signing/emrooz-release.jks -storepass Emrooz2026Release -alias emrooz -keypass Emrooz2026Release -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Emrooz v114, OU=Android, O=Emrooz, C=IR"
+
+      - name: Run complete unit suite ten independent times
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 10); do
+            echo "===== UNIT PASS $i / 10 ====="
+            gradle --no-daemon --stacktrace --rerun-tasks :app:testReleaseUnitTest
+          done
+
+      - name: Android lint
+        shell: bash
+        run: gradle --no-daemon --stacktrace :app:lintRelease
+
+      - name: Build release APK
+        shell: bash
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Verify final APK package assets privacy and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/release/app-release.apk'
+          test -f "$APK"
+          unzip -t "$APK" | tee /tmp/unzip.txt
+          grep -q 'No errors detected' /tmp/unzip.txt
+          unzip -l "$APK" | grep 'assets/models/shenava_v10_ctc/model.onnx'
+          unzip -l "$APK" | grep 'assets/models/shenava_v10_ctc_offline/model.onnx'
+          unzip -l "$APK" | grep 'assets/lexicon/persian_first_names.txt'
+          unzip -l "$APK" | grep 'assets/lexicon/persian_surnames.tsv'
+          unzip -l "$APK" | grep 'lib/arm64-v8a/libsherpa-onnx-jni.so'
+          unzip -p "$APK" assets/models/shenava_v10_ctc/model.onnx > /tmp/stream.onnx
+          unzip -p "$APK" assets/models/shenava_v10_ctc_offline/model.onnx > /tmp/final.onnx
+          unzip -p "$APK" assets/models/shenava_v10_ctc_offline/tokens.txt > /tmp/final.tokens
+          echo '439983c95ab83c55c841e0795ba3a61d56718ec5c972a3a208548b93470b04b1  /tmp/stream.onnx' | sha256sum -c -
+          echo '9d487fc2aa8cdb742a6e2f000be4c25e6b620faf73c9a335fdb310cc7879182e  /tmp/final.onnx' | sha256sum -c -
+          echo '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  /tmp/final.tokens' | sha256sum -c -
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | tee /tmp/perms.txt
+          grep -q 'android.permission.RECORD_AUDIO' /tmp/perms.txt
+          ! grep -q 'android.permission.INTERNET' /tmp/perms.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.nameemrooz.journal.rebuild114'" /tmp/badging.txt
+          grep -q "versionCode='17'" /tmp/badging.txt
+          grep -q "versionName='1.1.4'" /tmp/badging.txt
+          cp "$APK" Emrooz-v1.1.4-Rebuild.apk
+          sha256sum Emrooz-v1.1.4-Rebuild.apk | tee Emrooz-v1.1.4-Rebuild.apk.sha256
+          ls -lh Emrooz-v1.1.4-Rebuild.apk
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v1.1.4-Rebuild
+          path: |
+            Emrooz-v1.1.4-Rebuild.apk
+            Emrooz-v1.1.4-Rebuild.apk.sha256
+          compression-level: 0
+          retention-days: 30
