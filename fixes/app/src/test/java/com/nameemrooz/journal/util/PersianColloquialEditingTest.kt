@@ -43,4 +43,20 @@ class PersianColloquialEditingTest {
             PersianText.clean("این کار ممنوعی ندارد", final = true)
         )
     }
+
+    @Test
+    fun normalizesCommonEverydayVerbsWithoutChangingMeaning() {
+        assertEquals(
+            "می‌بینم چی می‌شه بعد می‌ذارم کنار و می‌خوابم.",
+            PersianText.clean("میبینم چی میشه بعد میذارم کنار و میخوابم", final = true)
+        )
+    }
+
+    @Test
+    fun normalizesPastAbilityAndActionForms() {
+        assertEquals(
+            "نمی‌تونستم کاری بکنم و نمی‌کردم.",
+            PersianText.clean("نمیتونستم کاری بکنم و نمیکردم", final = true)
+        )
+    }
 }
