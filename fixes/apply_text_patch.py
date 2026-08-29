@@ -22,13 +22,21 @@ if count != 1:
 text = text.replace(old, new, 1)
 
 old_question = '            val looksLikeQuestion = questionHints.any { hint -> text.contains(hint) }\n'
-new_question = '''            // Embedded words such as «چی» commonly occur inside statements
-            // (e.g. «نمی‌دونستم چی بگم»). Only infer a question when an interrogative
-            // cue opens the utterance; explicit spoken punctuation is handled above.
-            val looksLikeQuestion = questionHints.any { hint ->
+new_question = '''            // Generic interrogatives such as «چی» are only trusted at the start;
+            // otherwise ordinary statements like «نمی‌دونستم چی بگم» get a false question mark.
+            // Second-person question predicates are safe enough to detect anywhere in the sentence,
+            // e.g. «امروز میای خونه».
+            val openingQuestion = questionHints.any { hint ->
                 val cue = hint.trim()
                 text == cue || text.startsWith("$cue ")
             }
+            val conversationalQuestionPredicates = listOf(
+                "میای", "می‌آی", "می‌خوای", "میخوای", "می‌تونی", "میتونی", "هستی"
+            )
+            val conversationalQuestion = conversationalQuestionPredicates.any { cue ->
+                Regex("(^|\\\\s)${Regex.escape(cue)}(\\\\s|$)").containsMatchIn(text)
+            }
+            val looksLikeQuestion = openingQuestion || conversationalQuestion
 '''
 if text.count(old_question) != 1:
     raise SystemExit("question inference anchor did not match exactly once")
