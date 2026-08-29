@@ -106,12 +106,37 @@ jobs:
           STREAM_DIR="app/src/main/assets/models/shenava_v10_ctc"
           FINAL_DIR="app/src/main/assets/models/shenava_v10_ctc_offline"
           mkdir -p "$STREAM_DIR" "$FINAL_DIR"
-          STREAM_BASE='https://huggingface.co/mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-streaming-int8-2026-06-26/resolve/ae7a6e0f530d30f3a110e26724dca4efce01a85e'
-          FINAL_BASE='https://huggingface.co/mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-non-streaming-int8-2026-06-26/resolve/main'
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$STREAM_DIR/model.onnx" "$STREAM_BASE/model.int8.onnx?download=true"
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$STREAM_DIR/tokens.txt" "$STREAM_BASE/tokens.txt?download=true"
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FINAL_DIR/model.onnx" "$FINAL_BASE/model.int8.onnx?download=true"
-          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o "$FINAL_DIR/tokens.txt" "$FINAL_BASE/tokens.txt?download=true"
+
+          download_model() {
+            local out="$1"
+            local primary="$2"
+            local fallback="$3"
+            rm -f "$out"
+            if curl -L --fail --retry 4 --retry-all-errors --retry-delay 3 --connect-timeout 30 --max-time 900 -A 'Emrooz-Android-Build/1.1.4' -o "$out" "$primary"; then
+              return 0
+            fi
+            echo "Primary model endpoint failed; using fallback"
+            rm -f "$out"
+            curl -L --fail --retry 8 --retry-all-errors --retry-delay 8 --connect-timeout 30 --max-time 1200 -A 'Emrooz-Android-Build/1.1.4' -o "$out" "$fallback"
+          }
+
+          STREAM_REPO='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-streaming-int8-2026-06-26'
+          STREAM_REV='ae7a6e0f530d30f3a110e26724dca4efce01a85e'
+          FINAL_REPO='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-non-streaming-int8-2026-06-26'
+
+          download_model "$STREAM_DIR/model.onnx" \
+            "https://hf-mirror.com/$STREAM_REPO/resolve/$STREAM_REV/model.int8.onnx?download=true" \
+            "https://huggingface.co/$STREAM_REPO/resolve/$STREAM_REV/model.int8.onnx?download=true"
+          download_model "$STREAM_DIR/tokens.txt" \
+            "https://hf-mirror.com/$STREAM_REPO/resolve/$STREAM_REV/tokens.txt?download=true" \
+            "https://huggingface.co/$STREAM_REPO/resolve/$STREAM_REV/tokens.txt?download=true"
+          download_model "$FINAL_DIR/model.onnx" \
+            "https://hf-mirror.com/$FINAL_REPO/resolve/main/model.int8.onnx?download=true" \
+            "https://huggingface.co/$FINAL_REPO/resolve/main/model.int8.onnx?download=true"
+          download_model "$FINAL_DIR/tokens.txt" \
+            "https://hf-mirror.com/$FINAL_REPO/resolve/main/tokens.txt?download=true" \
+            "https://huggingface.co/$FINAL_REPO/resolve/main/tokens.txt?download=true"
+
           echo "439983c95ab83c55c841e0795ba3a61d56718ec5c972a3a208548b93470b04b1  $STREAM_DIR/model.onnx" | sha256sum -c -
           echo "9d487fc2aa8cdb742a6e2f000be4c25e6b620faf73c9a335fdb310cc7879182e  $FINAL_DIR/model.onnx" | sha256sum -c -
           echo "8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  $FINAL_DIR/tokens.txt" | sha256sum -c -
