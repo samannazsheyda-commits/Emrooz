@@ -209,6 +209,20 @@ object PersianText {
         var i = 0
         while (i < tokens.size) {
             val (firstCore, _) = splitNumberToken(tokens[i])
+
+            // «نه» is far more often Persian negation than the digit 9. Only treat it as
+            // a number when it begins a scaled number such as «نه هزار». It is still
+            // consumed normally inside sequences such as «بیست و نه» because those begin
+            // parsing from the earlier numeric word.
+            if (firstCore == "نه") {
+                val nextCore = tokens.getOrNull(i + 1)?.let { splitNumberToken(it).first }
+                if (nextCore !in scales) {
+                    out += tokens[i]
+                    i++
+                    continue
+                }
+            }
+
             if (numberValue(firstCore) == null && firstCore !in scales) {
                 out += tokens[i]
                 i++
