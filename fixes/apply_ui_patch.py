@@ -191,4 +191,17 @@ for old, new, label in replacements:
     text = text.replace(old, new, 1)
 
 path.write_text(text, encoding="utf-8")
+
+# Final install build uses a fresh application ID so old test builds with lost/ephemeral
+# signing keys cannot block installation with INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+gradle_path = Path("app/build.gradle.kts")
+gradle_text = gradle_path.read_text(encoding="utf-8")
+old_app_id = 'applicationId = "com.nameemrooz.journal"'
+new_app_id = 'applicationId = "com.nameemrooz.journal.final"'
+count = gradle_text.count(old_app_id)
+if count != 1:
+    raise SystemExit(f"applicationId patch: expected exactly one match, got {count}")
+gradle_path.write_text(gradle_text.replace(old_app_id, new_app_id, 1), encoding="utf-8")
+
 print("UI_PATCH_OK")
+print("PACKAGE_PATCH_OK")
