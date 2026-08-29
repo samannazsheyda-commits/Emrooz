@@ -1,0 +1,221 @@
+name: Build Emrooz v1.1.5 Final
+
+on:
+  push:
+    branches: [fix/final-v115-brand-archive]
+    paths:
+      - 'fixes/apply_v115_brand_archive_patch.py'
+      - '.github/workflows/build-v115-final.yml'
+  workflow_dispatch:
+
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      TZ: Asia/Tehran
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact verified v1.1.4 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          echo '3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/base.tgz' | sha256sum -c -
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114.tgz' | sha256sum -c -
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          find app/src/main/java/com/nameemrooz/journal/speech -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/speech-before.sha256
+
+      - name: Apply v1.1.5 UI archive and branding code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 fixes/apply_v115_brand_archive_patch.py
+          find app/src/main/java/com/nameemrooz/journal/speech -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/speech-after.sha256
+          diff -u /tmp/speech-before.sha256 /tmp/speech-after.sha256
+
+      - name: Add RED-derived regression test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/test/java/com/nameemrooz/journal/util
+          cat > app/src/test/java/com/nameemrooz/journal/util/PersianArchiveFormatterTest.kt <<'KOT'
+          package com.nameemrooz.journal.util
+
+          import org.junit.Assert.assertFalse
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+          import java.util.Calendar
+          import java.util.TimeZone
+
+          class PersianArchiveFormatterTest {
+              @Test fun archiveStampContainsPersianDateAndTimeOnly() {
+                  val old = TimeZone.getDefault()
+                  try {
+                      TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tehran"))
+                      val cal = Calendar.getInstance().apply {
+                          set(2026, Calendar.AUGUST, 29, 18, 7, 0)
+                          set(Calendar.MILLISECOND, 0)
+                      }
+                      val value = JalaliDate.archiveStamp(cal.timeInMillis)
+                      assertTrue(value.contains("۱۸:۰۷"))
+                      assertTrue(value.contains("۱۴۰۵"))
+                      assertFalse(value.any { it in '0'..'9' })
+                  } finally {
+                      TimeZone.setDefault(old)
+                  }
+              }
+          }
+          KOT
+
+      - name: Add compile-time placeholders for licensed Doran and final icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res/font app/src/main/res/drawable-nodpi
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/doran_fa_num_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/doran_fa_num_bold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+          cp app/src/main/res/drawable-nodpi/ic_launcher_foreground_png.png app/src/main/res/drawable-nodpi/app_icon_exact.png
+          # Other v1.1.4 runtime fonts still required by unchanged UI outside the requested Doran surfaces.
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/noto_naskh_arabic.ttf 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_semibold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+
+      - name: Bundle offline Persian name lexicon
+        shell: bash
+        run: |
+          set -euo pipefail
+          LEX='app/src/main/assets/lexicon'; mkdir -p "$LEX"
+          curl -L --fail --retry 5 --retry-all-errors -o /tmp/names.json 'https://raw.githubusercontent.com/nabidam/persian-names/68f5cb39a25c19ecaf6f60f3181aea200f8206f8/names.json'
+          curl -L --fail --retry 5 --retry-all-errors -o /tmp/surnames.csv 'https://raw.githubusercontent.com/farbodbj/iranian-surname-frequencies/9fb2fdccb62445b52e933d4d7929a52e01bd6011/iranian-surname-frequencies.csv'
+          python3 - <<'PY'
+          import csv,json
+          from pathlib import Path
+          def norm(v): return (v or '').strip().replace('ي','ی').replace('ى','ی').replace('ك','ک').replace('ة','ه')
+          lex=Path('app/src/main/assets/lexicon')
+          d=json.loads(Path('/tmp/names.json').read_text(encoding='utf-8-sig'))
+          names={norm(x) for x in d.keys() if norm(x)}; names.add('سهیل')
+          (lex/'persian_first_names.txt').write_text('\n'.join(sorted(names))+'\n',encoding='utf-8')
+          surnames={}
+          with open('/tmp/surnames.csv',encoding='utf-8-sig',newline='') as f:
+              for row in csv.DictReader(f):
+                  n=norm(row.get('name',''))
+                  if not n: continue
+                  try: freq=float(row.get('frequency',0) or 0)
+                  except ValueError: freq=0.0
+                  surnames[n]=max(surnames.get(n,0),max(1,int(round(freq*1_000_000_000))))
+          surnames['ممدوحی']=max(surnames.get('ممدوحی',0),1)
+          with (lex/'persian_surnames.tsv').open('w',encoding='utf-8') as f:
+              for n,score in sorted(surnames.items()): f.write(f'{n}\t{score}\n')
+          PY
+
+      - name: Download and pin both unchanged Persian ASR models
+        shell: bash
+        run: |
+          set -euo pipefail
+          STREAM='app/src/main/assets/models/shenava_v10_ctc'; FINAL='app/src/main/assets/models/shenava_v10_ctc_offline'
+          mkdir -p "$STREAM" "$FINAL"
+          get() { out="$1"; primary="$2"; fallback="$3"; rm -f "$out"; curl -L --fail --retry 4 --retry-all-errors --retry-delay 3 --connect-timeout 30 --max-time 900 -A 'Emrooz-v115' -o "$out" "$primary" || { rm -f "$out"; curl -L --fail --retry 8 --retry-all-errors --retry-delay 8 --connect-timeout 30 --max-time 1200 -A 'Emrooz-v115' -o "$out" "$fallback"; }; }
+          SR='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-streaming-int8-2026-06-26'; REV='ae7a6e0f530d30f3a110e26724dca4efce01a85e'
+          FR='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-non-streaming-int8-2026-06-26'
+          get "$STREAM/model.onnx" "https://hf-mirror.com/$SR/resolve/$REV/model.int8.onnx?download=true" "https://huggingface.co/$SR/resolve/$REV/model.int8.onnx?download=true"
+          get "$STREAM/tokens.txt" "https://hf-mirror.com/$SR/resolve/$REV/tokens.txt?download=true" "https://huggingface.co/$SR/resolve/$REV/tokens.txt?download=true"
+          get "$FINAL/model.onnx" "https://hf-mirror.com/$FR/resolve/main/model.int8.onnx?download=true" "https://huggingface.co/$FR/resolve/main/model.int8.onnx?download=true"
+          get "$FINAL/tokens.txt" "https://hf-mirror.com/$FR/resolve/main/tokens.txt?download=true" "https://huggingface.co/$FR/resolve/main/tokens.txt?download=true"
+          echo '439983c95ab83c55c841e0795ba3a61d56718ec5c972a3a208548b93470b04b1  app/src/main/assets/models/shenava_v10_ctc/model.onnx' | sha256sum -c -
+          echo '9d487fc2aa8cdb742a6e2f000be4c25e6b620faf73c9a335fdb310cc7879182e  app/src/main/assets/models/shenava_v10_ctc_offline/model.onnx' | sha256sum -c -
+          echo '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  app/src/main/assets/models/shenava_v10_ctc_offline/tokens.txt' | sha256sum -c -
+
+      - name: Static requirement gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          MAIN='app/src/main/java/com/nameemrooz/journal/MainActivity.kt'
+          MAN='app/src/main/AndroidManifest.xml'
+          grep -q 'JalaliDate.archiveStamp(entry.createdAt)' "$UI"
+          ! grep -q 'Text(entry.title' "$UI"
+          grep -q 'R.font.doran_fa_num_regular' "$UI"
+          grep -q 'R.font.doran_fa_num_bold' "$UI"
+          grep -q '"نامه امروزت"' "$UI"
+          grep -q 'R.drawable.emrooz_logo' "$UI"
+          grep -q 'هر چیزی که بگی مهمه' "$UI"
+          grep -q 'val remaining = 3_000L - elapsed' "$MAIN"
+          grep -q 'android:icon="@drawable/app_icon_exact"' "$MAN"
+          ! grep -q 'android.permission.INTERNET' "$MAN"
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt').read_text()
+          a=s.index('fun EmroozPrivacyCover')
+          b=len(s)
+          block=s[a:b]
+          assert block.count('Image(')==1, 'Splash/privacy cover must have exactly one image (the logo+line)'
+          assert 'R.drawable.emrooz_logo' in block
+          assert 'app_icon_exact' not in block
+          PY
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.10.2' }
+
+      - name: Generate temporary CI signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          keytool -genkeypair -keystore signing/emrooz-release.jks -storepass Emrooz2026Release -alias emrooz -keypass Emrooz2026Release -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Emrooz v115 CI,OU=Android,O=Emrooz,C=IR'
+          cat > signing/keystore.properties <<'EOF'
+          storeFile=signing/emrooz-release.jks
+          storePassword=Emrooz2026Release
+          keyAlias=emrooz
+          keyPassword=Emrooz2026Release
+          EOF
+
+      - name: Run complete unit suite ten times
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 10); do echo "===== PASS $i/10 ====="; gradle --no-daemon --stacktrace --rerun-tasks :app:testReleaseUnitTest; done
+
+      - name: Android lint
+        run: gradle --no-daemon --stacktrace :app:lintRelease
+
+      - name: Build release APK
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Verify pre-injection APK and package tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/release/app-release.apk'
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zipcheck
+          grep -q 'No errors detected' /tmp/zipcheck
+          unzip -l "$APK" | grep 'res/font/doran_fa_num_regular.ttf'
+          unzip -l "$APK" | grep 'res/font/doran_fa_num_bold.ttf'
+          unzip -l "$APK" | grep 'res/drawable-nodpi/app_icon_exact.png'
+          unzip -l "$APK" | grep 'assets/models/shenava_v10_ctc/model.onnx'
+          unzip -l "$APK" | grep 'assets/models/shenava_v10_ctc_offline/model.onnx'
+          mkdir -p deliver
+          cp "$APK" deliver/Emrooz-v1.1.5-PreInjection.apk
+          cp /tmp/speech-before.sha256 deliver/speech-v114.sha256
+          tar -czf deliver/android-build-tools-35.tgz -C "$ANDROID_HOME/build-tools" 35.0.0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v1.1.5-PreInjection
+          path: deliver/
+          retention-days: 3
