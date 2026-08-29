@@ -4,7 +4,7 @@ on:
   push:
     branches: [fix/final-v116-repair]
     paths:
-      - 'payload/v116.overlay.b64'
+      - 'payload/v116.vec.*'
       - '.github/workflows/build-v116-final.yml'
   workflow_dispatch:
 
@@ -68,7 +68,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d payload/v116.overlay.b64 > /tmp/v116.tgz
+          cat payload/v116.vec.* > /tmp/v116.vec.b64
+          test "$(wc -c < /tmp/v116.vec.b64)" -eq 171024
+          echo '2a0cde7c006f090bea54ec4aac7cff82839340ed140893e64dec36183ca73f22  /tmp/v116.vec.b64' | sha256sum -c -
+          base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz
           echo '468b2c892f05ffa25f6a59597fa0405d1903303f407656d52fe14814425caebd  /tmp/v116.tgz' | sha256sum -c -
           tar -xzf /tmp/v116.tgz -C .
 
