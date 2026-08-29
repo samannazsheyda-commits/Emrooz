@@ -19,7 +19,7 @@ jobs:
           cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
           tar -xzf /tmp/emrooz-source.tar.gz -C .
           UI="app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt"
-          echo '--- listening occurrences ---'
-          grep -n -C 12 -E 'if[[:space:]]*\([[:space:]]*listening|در حال|متن امروز|speech|transcript' "$UI" || true
-          echo '--- lines 300-390 ---'
-          nl -ba "$UI" | sed -n '300,390p'
+          echo '--- TranscriptEditor call sites ---'
+          grep -n -C 18 'TranscriptEditor(' "$UI" || true
+          echo '--- lines 240-305 ---'
+          nl -ba "$UI" | sed -n '240,305p'
