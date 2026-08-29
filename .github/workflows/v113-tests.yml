@@ -26,6 +26,7 @@ jobs:
           sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
           sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
           if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
           python3 fixes/apply_ui_patch.py
 
           # Unit tests compile recognizer wiring but never execute native inference.
