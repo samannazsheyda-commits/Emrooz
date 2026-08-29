@@ -20,5 +20,19 @@ count = text.count(old)
 if count != 1:
     raise SystemExit(f"colloquial phrase anchor: expected exactly one match, got {count}")
 text = text.replace(old, new, 1)
+
+old_question = '            val looksLikeQuestion = questionHints.any { hint -> text.contains(hint) }\n'
+new_question = '''            // Embedded words such as «چی» commonly occur inside statements
+            // (e.g. «نمی‌دونستم چی بگم»). Only infer a question when an interrogative
+            // cue opens the utterance; explicit spoken punctuation is handled above.
+            val looksLikeQuestion = questionHints.any { hint ->
+                val cue = hint.trim()
+                text == cue || text.startsWith("$cue ")
+            }
+'''
+if text.count(old_question) != 1:
+    raise SystemExit("question inference anchor did not match exactly once")
+text = text.replace(old_question, new_question, 1)
+
 path.write_text(text, encoding="utf-8")
 print("TEXT_PATCH_OK")
