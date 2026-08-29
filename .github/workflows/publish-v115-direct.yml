@@ -1,0 +1,63 @@
+name: Publish Emrooz v1.1.5 Direct Download
+
+on:
+  push:
+    branches: [publish/v115-direct-download]
+    paths:
+      - '.github/workflows/publish-v115-direct.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_ARTIFACT_ID: '9717839003'
+      RELEASE_TAG: 'v1.1.5-direct'
+    steps:
+      - name: Download verified v1.1.5 artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o /tmp/artifact.zip \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip"
+          mkdir artifact
+          unzip -q /tmp/artifact.zip -d artifact
+          test -s artifact/Emrooz-v1.1.5-PreInjection.apk
+          sha256sum artifact/Emrooz-v1.1.5-PreInjection.apk
+          cp artifact/Emrooz-v1.1.5-PreInjection.apk artifact/Emrooz-v1.1.5.apk
+
+      - name: Publish public GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" artifact/Emrooz-v1.1.5.apk --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" artifact/Emrooz-v1.1.5.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Emrooz v1.1.5" \
+              --notes "Public direct-download copy of the verified v1.1.5 Android build."
+          fi
+
+      - name: Verify public asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,url | tee /tmp/release.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/release.json'))
+          a=[x for x in d['assets'] if x['name']=='Emrooz-v1.1.5.apk']
+          assert len(a)==1 and a[0]['size'] > 300_000_000
+          print(a[0]['url'])
+          PY
