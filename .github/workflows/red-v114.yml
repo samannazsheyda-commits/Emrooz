@@ -1,0 +1,40 @@
+name: RED Emrooz v1.1.4
+
+on:
+  push:
+    branches: [fix/final-v114-rebuild]
+    paths:
+      - 'fixes/app/src/test/**'
+      - '.github/workflows/red-v114.yml'
+  workflow_dispatch:
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct current app without v1.1.4 production fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
+          echo "3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/emrooz-source.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/emrooz-source.tar.gz -C .
+          UI="app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          # Copy only tests. Production deliberately stays at the old build for RED.
+          if [ -d fixes/app/src/test ]; then cp -a fixes/app/src/test/. app/src/test/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+      - shell: bash
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.10.2'}
+      - name: Expected failing colloquial regression tests
+        shell: bash
+        run: gradle --no-daemon :app:testReleaseUnitTest --tests '*PersianColloquialEditingTest'
