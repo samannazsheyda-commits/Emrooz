@@ -1,0 +1,25 @@
+name: Diagnose Emrooz Transcript UI
+
+on:
+  push:
+    branches: [ fix/live-stt-shimmer ]
+    paths:
+      - '.github/workflows/diagnose-ui.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and print transcript UI context
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
+          tar -xzf /tmp/emrooz-source.tar.gz -C .
+          UI="app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt"
+          echo '--- listening occurrences ---'
+          grep -n -C 12 -E 'if[[:space:]]*\([[:space:]]*listening|در حال|متن امروز|speech|transcript' "$UI" || true
+          echo '--- lines 300-390 ---'
+          nl -ba "$UI" | sed -n '300,390p'
