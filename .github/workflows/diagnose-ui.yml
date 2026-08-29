@@ -20,13 +20,20 @@ jobs:
           tar -xzf /tmp/emrooz-source.tar.gz -C .
           UI="app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt"
           CLEAN="app/src/main/java/com/nameemrooz/journal/util/PersianText.kt"
-          echo '--- PersianText ---'
-          nl -ba "$CLEAN" | sed -n '1,280p' || true
-          echo '--- TranscriptEditor and action buttons ---'
-          nl -ba "$UI" | sed -n '250,450p' || true
-          echo '--- Theme and typography references ---'
-          grep -RIn --exclude='*.png' --exclude='*.jpg' --exclude='*.onnx' -E 'FontFamily|fontFamily|Typography|نامه|Sheida|Doran|Peyda|IRANSans|Vazir|Dana|Yekan|Sahel|Estedad' app/src/main 2>/dev/null | head -n 250 || true
+          TEST="app/src/test/java/com/nameemrooz/journal/util/PersianTextTest.kt"
+          echo '--- PersianText legacy tests ---'
+          nl -ba "$TEST" | sed -n '1,240p' || true
+          echo '--- UI imports/font declarations ---'
+          nl -ba "$UI" | sed -n '1,145p' || true
+          echo '--- TranscriptEditor and actions ---'
+          nl -ba "$UI" | sed -n '250,475p' || true
+          echo '--- Theme ---'
+          nl -ba app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt | sed -n '1,180p' || true
+          echo '--- First-name data sample ---'
+          curl -L --fail --silent 'https://raw.githubusercontent.com/nabidam/persian-names/main/names_1.csv' | head -n 8 || true
+          echo '--- Surname data sample ---'
+          curl -L --fail --silent 'https://raw.githubusercontent.com/farbodbj/iranian-surname-frequencies/github-master/iranian-surname-frequencies.csv' | head -n 8 || true
           echo '--- Font/resource files ---'
           find app/src/main -type f \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.woff' -o -iname '*.woff2' \) -print || true
-          echo '--- Gradle speech/model deps ---'
-          grep -n -E 'sherpa|onnx|versionName|versionCode' app/build.gradle.kts || true
+          echo '--- Gradle versions ---'
+          grep -n -E 'versionName|versionCode' app/build.gradle.kts || true
