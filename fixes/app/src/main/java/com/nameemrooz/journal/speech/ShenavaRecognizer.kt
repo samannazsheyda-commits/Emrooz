@@ -15,9 +15,7 @@ class ShenavaRecognizer(context: Context) : AutoCloseable {
 
     init {
         val modelConfig = OnlineModelConfig(
-            neMoCtc = OnlineNeMoCtcModelConfig(
-                model = ShenavaModelSpec.modelPath
-            ),
+            neMoCtc = OnlineNeMoCtcModelConfig(model = ShenavaModelSpec.modelPath),
             tokens = ShenavaModelSpec.tokensPath,
             numThreads = minOf(4, maxOf(2, Runtime.getRuntime().availableProcessors() - 1)),
             debug = false,
@@ -26,7 +24,7 @@ class ShenavaRecognizer(context: Context) : AutoCloseable {
         recognizer = OnlineRecognizer(
             assetManager = context.assets,
             config = OnlineRecognizerConfig(
-                featConfig = FeatureConfig(sampleRate = 16000, featureDim = 80),
+                featConfig = FeatureConfig(sampleRate = SpeechTuning.SAMPLE_RATE, featureDim = 80),
                 modelConfig = modelConfig,
                 enableEndpoint = false,
                 decodingMethod = "greedy_search"
@@ -43,21 +41,16 @@ class ShenavaRecognizer(context: Context) : AutoCloseable {
     /** Feed a short microphone chunk and return the current cumulative partial transcript. */
     fun accept(samples: FloatArray): String {
         if (samples.isEmpty()) return recognizer.getResult(stream).text.trim()
-        stream.acceptWaveform(samples, 16000)
-        while (recognizer.isReady(stream)) {
-            recognizer.decode(stream)
-        }
+        stream.acceptWaveform(samples, SpeechTuning.SAMPLE_RATE)
+        while (recognizer.isReady(stream)) recognizer.decode(stream)
         return recognizer.getResult(stream).text.trim()
     }
 
     /** Flush the streaming decoder when the user stops speaking. */
     fun finish(): String {
-        // A little silence gives the streaming frontend enough right context to flush the last word.
-        stream.acceptWaveform(FloatArray(3200), 16000)
+        stream.acceptWaveform(FloatArray(SpeechTuning.FINAL_SILENCE_SAMPLES), SpeechTuning.SAMPLE_RATE)
         stream.inputFinished()
-        while (recognizer.isReady(stream)) {
-            recognizer.decode(stream)
-        }
+        while (recognizer.isReady(stream)) recognizer.decode(stream)
         return recognizer.getResult(stream).text.trim()
     }
 
