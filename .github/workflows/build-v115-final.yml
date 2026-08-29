@@ -43,6 +43,17 @@ jobs:
           python3 fixes/apply_v115_brand_archive_patch.py
           find app/src/main/java/com/nameemrooz/journal/speech -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/speech-after.sha256
           diff -u /tmp/speech-before.sha256 /tmp/speech-after.sha256
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/build.gradle.kts')
+          s=p.read_text(encoding='utf-8')
+          s,n0=re.subn(r'applicationId\s*=\s*"[^"]+"','applicationId = "com.nameemrooz.journal.v115"',s,count=1)
+          s,n1=re.subn(r'versionCode\s*=\s*\d+','versionCode = 18',s,count=1)
+          s,n2=re.subn(r'versionName\s*=\s*"[^"]+"','versionName = "1.1.5"',s,count=1)
+          assert (n0,n1,n2)==(1,1,1),(n0,n1,n2)
+          p.write_text(s,encoding='utf-8')
+          PY
 
       - name: Add RED-derived regression test
         shell: bash
@@ -86,7 +97,6 @@ jobs:
           curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/doran_fa_num_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
           curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/doran_fa_num_bold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
           cp app/src/main/res/drawable-nodpi/ic_launcher_foreground_png.png app/src/main/res/drawable-nodpi/app_icon_exact.png
-          # Other v1.1.4 runtime fonts still required by unchanged UI outside the requested Doran surfaces.
           curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/noto_naskh_arabic.ttf 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
           curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
           curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_semibold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
@@ -152,14 +162,13 @@ jobs:
           grep -q 'هر چیزی که بگی مهمه' "$UI"
           grep -q 'val remaining = 3_000L - elapsed' "$MAIN"
           grep -q 'android:icon="@drawable/app_icon_exact"' "$MAN"
+          grep -q 'applicationId = "com.nameemrooz.journal.v115"' app/build.gradle.kts
           ! grep -q 'android.permission.INTERNET' "$MAN"
           python3 - <<'PY'
           from pathlib import Path
           s=Path('app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt').read_text()
-          a=s.index('fun EmroozPrivacyCover')
-          b=len(s)
-          block=s[a:b]
-          assert block.count('Image(')==1, 'Splash/privacy cover must have exactly one image (the logo+line)'
+          block=s[s.index('fun EmroozPrivacyCover'):]
+          assert block.count('Image(')==1
           assert 'R.drawable.emrooz_logo' in block
           assert 'app_icon_exact' not in block
           PY
@@ -202,16 +211,23 @@ jobs:
           set -euo pipefail
           APK='app/build/outputs/apk/release/app-release.apk'
           test -s "$APK"
+          mkdir -p deliver
           unzip -t "$APK" | tee /tmp/zipcheck
           grep -q 'No errors detected' /tmp/zipcheck
-          unzip -l "$APK" | grep 'res/font/doran_fa_num_regular.ttf'
-          unzip -l "$APK" | grep 'res/font/doran_fa_num_bold.ttf'
-          unzip -l "$APK" | grep 'res/drawable-nodpi/app_icon_exact.png'
           unzip -l "$APK" | grep 'assets/models/shenava_v10_ctc/model.onnx'
           unzip -l "$APK" | grep 'assets/models/shenava_v10_ctc_offline/model.onnx'
-          mkdir -p deliver
+          unzip -l "$APK" | grep 'assets/lexicon/persian_first_names.txt'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump resources "$APK" > deliver/resources.txt
+          grep -q 'doran_fa_num_regular' deliver/resources.txt
+          grep -q 'doran_fa_num_bold' deliver/resources.txt
+          grep -q 'app_icon_exact' deliver/resources.txt
           cp "$APK" deliver/Emrooz-v1.1.5-PreInjection.apk
+          cp app/src/main/res/font/doran_fa_num_regular.ttf deliver/placeholder-doran-regular.ttf
+          cp app/src/main/res/font/doran_fa_num_bold.ttf deliver/placeholder-doran-bold.ttf
+          cp app/src/main/res/drawable-nodpi/app_icon_exact.png deliver/placeholder-app-icon.png
           cp /tmp/speech-before.sha256 deliver/speech-v114.sha256
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" > deliver/badging.txt
+          sha256sum deliver/placeholder-* > deliver/placeholder-hashes.txt
           tar -czf deliver/android-build-tools-35.tgz -C "$ANDROID_HOME/build-tools" 35.0.0
 
       - uses: actions/upload-artifact@v4
