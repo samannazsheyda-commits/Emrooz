@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.nameemrooz.journal.util.PersianNameCorrector
 import com.nameemrooz.journal.util.PersianText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,10 +39,13 @@ class LiveSpeechEngine(
     private var recognizer: ShenavaRecognizer? = null
     private var audioRecord: AudioRecord? = null
     private var job: Job? = null
+    private val nameCorrector by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        PersianNameCorrector(context.applicationContext)
+    }
 
     private val sampleRate = 16000
 
-    /** Warm the bundled streaming model before the user starts speaking. */
+    /** Warm the bundled streaming model and offline name lexicon before the user starts speaking. */
     fun prepare() {
         if (recognizer != null) {
             emitReady(true)
@@ -53,6 +57,7 @@ class LiveSpeechEngine(
             try {
                 val loaded = ShenavaRecognizer(context)
                 if (recognizer == null) recognizer = loaded else loaded.close()
+                nameCorrector.warmUp()
                 emitReady(true)
             } catch (t: Throwable) {
                 Log.e(TAG, "Unable to prepare Persian streaming model", t)
@@ -140,6 +145,7 @@ class LiveSpeechEngine(
                         readBuffer[i] = 0
                     }
 
+                    // Keep live text stable and fast. Stronger editing happens only after stop.
                     val partial = PersianText.clean(activeRecognizer.accept(samples))
                     java.util.Arrays.fill(samples, 0f)
                     if (partial.isNotBlank() && partial != lastEmitted) {
@@ -148,7 +154,8 @@ class LiveSpeechEngine(
                     }
                 }
 
-                val finalText = PersianText.clean(activeRecognizer.finish(), final = true)
+                val cleaned = PersianText.clean(activeRecognizer.finish(), final = true)
+                val finalText = nameCorrector.correct(cleaned)
                 if (finalText.isNotBlank() && finalText != lastEmitted) {
                     emitText(finalText)
                 }
