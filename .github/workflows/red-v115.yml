@@ -1,0 +1,80 @@
+name: RED Emrooz v1.1.5
+
+on:
+  push:
+    branches: [fix/final-v115-brand-archive]
+    paths:
+      - '.github/workflows/red-v115.yml'
+  workflow_dispatch:
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct verified v1.1.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          echo '3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/base.tgz' | sha256sum -c -
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114.tgz' | sha256sum -c -
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+
+      - name: Add failing v1.1.5 behavior test
+        shell: bash
+        run: |
+          mkdir -p app/src/test/java/com/nameemrooz/journal/util
+          cat > app/src/test/java/com/nameemrooz/journal/util/PersianArchiveFormatterTest.kt <<'KOT'
+          package com.nameemrooz.journal.util
+
+          import org.junit.Assert.assertFalse
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+          import java.util.Calendar
+          import java.util.TimeZone
+
+          class PersianArchiveFormatterTest {
+              @Test fun archiveStampContainsPersianDateAndTimeOnly() {
+                  val cal = Calendar.getInstance(TimeZone.getTimeZone("Asia/Tehran")).apply {
+                      set(2026, Calendar.AUGUST, 29, 18, 7, 0)
+                      set(Calendar.MILLISECOND, 0)
+                  }
+                  val value = JalaliDate.archiveStamp(cal.timeInMillis)
+                  assertTrue(value.contains("۱۸:۰۷"))
+                  assertTrue(value.contains("۱۴۰۵"))
+                  assertFalse(value.any { it in '0'..'9' })
+              }
+          }
+          KOT
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.10.2' }
+
+      - name: Confirm RED failure
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon :app:testReleaseUnitTest > /tmp/red.log 2>&1
+          code=$?
+          cat /tmp/red.log
+          if [ "$code" -eq 0 ]; then
+            echo 'Expected RED failure but tests passed' >&2
+            exit 1
+          fi
+          grep -q 'archiveStamp' /tmp/red.log
+          echo 'RED_CONFIRMED'
