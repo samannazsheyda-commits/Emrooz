@@ -1,8 +1,8 @@
-name: Diagnose Emrooz Editor and Text
+name: Diagnose Emrooz Final Source
 
 on:
   push:
-    branches: [ fix/editor-names-v112 ]
+    branches: [ feat/final-ui-stt-v113 ]
     paths:
       - '.github/workflows/diagnose-ui.yml'
   workflow_dispatch:
@@ -12,28 +12,52 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct and inspect relevant source
+
+      - name: Reconstruct exact current source
         shell: bash
         run: |
           set -euo pipefail
           cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
+          echo "3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/emrooz-source.tar.gz" | sha256sum -c -
           tar -xzf /tmp/emrooz-source.tar.gz -C .
           UI="app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt"
-          CLEAN="app/src/main/java/com/nameemrooz/journal/util/PersianText.kt"
-          TEST="app/src/test/java/com/nameemrooz/journal/util/PersianTextTest.kt"
-          echo '--- PersianText legacy tests ---'
-          nl -ba "$TEST" | sed -n '1,240p' || true
-          echo '--- UI imports/font declarations ---'
-          nl -ba "$UI" | sed -n '1,145p' || true
-          echo '--- TranscriptEditor and actions ---'
-          nl -ba "$UI" | sed -n '250,475p' || true
-          echo '--- Theme ---'
-          nl -ba app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt | sed -n '1,180p' || true
-          echo '--- First-name data sample ---'
-          curl -L --fail --silent 'https://raw.githubusercontent.com/nabidam/persian-names/main/names_1.csv' | head -n 8 || true
-          echo '--- Surname data sample ---'
-          curl -L --fail --silent 'https://raw.githubusercontent.com/farbodbj/iranian-surname-frequencies/github-master/iranian-surname-frequencies.csv' | head -n 8 || true
-          echo '--- Font/resource files ---'
-          find app/src/main -type f \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.woff' -o -iname '*.woff2' \) -print || true
-          echo '--- Gradle versions ---'
-          grep -n -E 'versionName|versionCode' app/build.gradle.kts || true
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_ui_patch.py
+
+      - name: Print exact integration points
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- AppViewModel ---'
+          nl -ba app/src/main/java/com/nameemrooz/journal/ui/AppViewModel.kt | sed -n '1,220p'
+          echo '--- TitleGenerator ---'
+          nl -ba app/src/main/java/com/nameemrooz/journal/util/TitleGenerator.kt | sed -n '1,220p'
+          echo '--- Home / Splash ---'
+          grep -n -E 'Splash|Home\(|TranscriptEditor\(|نامه امروزت|از امروزت بگو|هر چیزی|DraftActionButton|Detail\(' app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt || true
+          echo '--- Home lines 100-360 ---'
+          nl -ba app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt | sed -n '100,360p'
+          echo '--- Editor/detail lines 360-620 ---'
+          nl -ba app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt | sed -n '360,620p'
+
+      - name: Prepare source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p exact-source
+          cp app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt exact-source/
+          cp app/src/main/java/com/nameemrooz/journal/ui/AppViewModel.kt exact-source/
+          cp app/src/main/java/com/nameemrooz/journal/util/TitleGenerator.kt exact-source/
+          cp app/src/main/java/com/nameemrooz/journal/model/JournalEntry.kt exact-source/
+          cp app/src/main/java/com/nameemrooz/journal/data/JournalRepository.kt exact-source/
+          cp app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt exact-source/
+          cp app/src/main/java/com/nameemrooz/journal/speech/ShenavaRecognizer.kt exact-source/
+          cp app/build.gradle.kts exact-source/app-build.gradle.kts
+
+      - name: Upload exact source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v113-exact-source
+          path: exact-source/
+          retention-days: 7
