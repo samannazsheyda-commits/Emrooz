@@ -36,17 +36,20 @@ class LiveSpeechEngine(
     private val mainHandler = Handler(Looper.getMainLooper())
     private val running = AtomicBoolean(false)
     private val preparing = AtomicBoolean(false)
+    private val preparingNames = AtomicBoolean(false)
     private var recognizer: ShenavaRecognizer? = null
+    @Volatile private var nameCorrector: PersianNameCorrector? = null
     private var audioRecord: AudioRecord? = null
     private var job: Job? = null
-    private val nameCorrector by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        PersianNameCorrector(context.applicationContext)
-    }
 
-    private val sampleRate = 16000
+    private val sampleRate = SpeechTuning.SAMPLE_RATE
 
-    /** Warm the bundled streaming model and offline name lexicon before the user starts speaking. */
+    /**
+     * Prepare the recognizer on the critical path. The much larger offline name lexicon
+     * warms independently so the microphone becomes usable as soon as the model is ready.
+     */
     fun prepare() {
+        prepareNameLexicon()
         if (recognizer != null) {
             emitReady(true)
             return
@@ -57,7 +60,6 @@ class LiveSpeechEngine(
             try {
                 val loaded = ShenavaRecognizer(context)
                 if (recognizer == null) recognizer = loaded else loaded.close()
-                nameCorrector.warmUp()
                 emitReady(true)
             } catch (t: Throwable) {
                 Log.e(TAG, "Unable to prepare Persian streaming model", t)
@@ -65,6 +67,22 @@ class LiveSpeechEngine(
                 emitError("مدل فارسی آماده نشد")
             } finally {
                 preparing.set(false)
+            }
+        }
+    }
+
+    private fun prepareNameLexicon() {
+        if (nameCorrector != null || !preparingNames.compareAndSet(false, true)) return
+        scope.launch {
+            try {
+                val loaded = PersianNameCorrector(context.applicationContext)
+                loaded.warmUp()
+                nameCorrector = loaded
+            } catch (t: Throwable) {
+                // Name correction is an enhancement; speech-to-text must remain usable without it.
+                Log.w(TAG, "Offline name lexicon warm-up failed", t)
+            } finally {
+                preparingNames.set(false)
             }
         }
     }
@@ -127,16 +145,14 @@ class LiveSpeechEngine(
         emitListening(true)
 
         job = scope.launch {
-            val readBuffer = ShortArray(4096)
+            val readBuffer = ShortArray(SpeechTuning.READ_SAMPLES)
             var lastEmitted = ""
             var failed = false
 
             try {
                 while (running.get()) {
                     val n = record.read(readBuffer, 0, readBuffer.size, AudioRecord.READ_BLOCKING)
-                    if (n < 0) {
-                        throw IllegalStateException("AudioRecord.read failed with code $n")
-                    }
+                    if (n < 0) throw IllegalStateException("AudioRecord.read failed with code $n")
                     if (n == 0) continue
 
                     val samples = FloatArray(n)
@@ -155,10 +171,8 @@ class LiveSpeechEngine(
                 }
 
                 val cleaned = PersianText.clean(activeRecognizer.finish(), final = true)
-                val finalText = nameCorrector.correct(cleaned)
-                if (finalText.isNotBlank() && finalText != lastEmitted) {
-                    emitText(finalText)
-                }
+                val finalText = nameCorrector?.correct(cleaned) ?: cleaned
+                if (finalText.isNotBlank() && finalText != lastEmitted) emitText(finalText)
             } catch (t: Throwable) {
                 failed = true
                 Log.e(TAG, "Streaming speech recognition failed", t)
@@ -192,6 +206,7 @@ class LiveSpeechEngine(
         audioRecord = null
         try { recognizer?.close() } catch (_: Throwable) {}
         recognizer = null
+        nameCorrector = null
         scope.cancel()
     }
 
