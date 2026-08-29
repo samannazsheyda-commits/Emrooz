@@ -1,0 +1,23 @@
+name: Diagnose Persian Text
+on:
+  push:
+    branches: [feat/final-ui-stt-v113]
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source and show text tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
+          tar -xzf /tmp/emrooz-source.tar.gz -C .
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          echo '===== PersianTextTest.kt ====='
+          sed -n '1,220p' app/src/test/java/com/nameemrooz/journal/util/PersianTextTest.kt
+          echo '===== PersianText.kt ====='
+          sed -n '1,300p' app/src/main/java/com/nameemrooz/journal/util/PersianText.kt
