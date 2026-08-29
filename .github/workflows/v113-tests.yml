@@ -28,6 +28,18 @@ jobs:
           if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
           python3 fixes/apply_ui_patch.py
 
+          # Unit tests compile recognizer wiring but never execute native inference.
+          # The Gradle preBuild task only downloads model assets when they are absent/small,
+          # so deterministic placeholders avoid a ~125 MB network fetch on every red/green cycle.
+          MODEL_DIR="app/src/main/assets/models/shenava_v10_ctc"
+          mkdir -p "$MODEL_DIR"
+          dd if=/dev/zero of="$MODEL_DIR/model.onnx" bs=2048 count=1 status=none
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/assets/models/shenava_v10_ctc/tokens.txt')
+          p.write_text(('placeholder\n' * 220), encoding='utf-8')
+          PY
+
       - name: Bundle compile-time Persian fonts
         shell: bash
         run: |
