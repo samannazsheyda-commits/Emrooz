@@ -1,0 +1,51 @@
+name: Inspect Emrooz v1.1.5 Base
+
+on:
+  push:
+    branches: [fix/final-v115-brand-archive]
+    paths:
+      - '.github/workflows/inspect-v115-base.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct verified v1.1.4 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
+          echo '3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/emrooz-source.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/emrooz-source.tar.gz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114-overlay.tgz
+          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114-overlay.tgz' | sha256sum -c -
+          tar -xzf /tmp/v114-overlay.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+
+      - name: Collect source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p inspection
+          cp -a app/src inspection/app-src
+          cp app/build.gradle.kts inspection/
+          cp app/src/main/AndroidManifest.xml inspection/AndroidManifest.xml
+          grep -RniE 'name|اسم|Archive|آرشیو|Splash|splash|date|time|تاریخ|ساعت|نامه امروزت|Font|font|mipmap|launcher|icon' app/src/main app/src/test > inspection/grep.txt || true
+          tar -czf inspection/v114-source.tgz app/src app/build.gradle.kts
+          sha256sum inspection/v114-source.tgz > inspection/v114-source.tgz.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v114-Exact-Source
+          path: inspection/
+          retention-days: 3
