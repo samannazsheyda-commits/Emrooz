@@ -48,7 +48,8 @@ class ShenavaRecognizer(context: Context) : AutoCloseable {
 
     /** Flush the streaming decoder when the user stops speaking. */
     fun finish(): String {
-        stream.acceptWaveform(FloatArray(SpeechTuning.FINAL_SILENCE_SAMPLES), SpeechTuning.SAMPLE_RATE)
+        // 100 ms at 16 kHz is enough right-context to flush the final word without a long stop delay.
+        stream.acceptWaveform(FloatArray(1600), SpeechTuning.SAMPLE_RATE)
         stream.inputFinished()
         while (recognizer.isReady(stream)) recognizer.decode(stream)
         return recognizer.getResult(stream).text.trim()
