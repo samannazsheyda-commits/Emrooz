@@ -6,6 +6,11 @@ on:
     paths:
       - 'fixes/**'
       - '.github/workflows/build-live-stt-fix.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'fixes/**'
+      - '.github/workflows/build-live-stt-fix.yml'
   workflow_dispatch:
 
 jobs:
