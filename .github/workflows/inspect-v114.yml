@@ -1,0 +1,59 @@
+name: Inspect Emrooz v1.1.4
+
+on:
+  push:
+    branches: [fix/final-v114-rebuild]
+    paths:
+      - '.github/workflows/inspect-v114.yml'
+      - 'fixes/**'
+      - 'payload/**'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact currently-built source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/emrooz-source.tar.gz
+          echo "3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/emrooz-source.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/emrooz-source.tar.gz -C .
+          UI="app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+
+      - name: Produce source inventory and diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p inspection
+          find app/src/main -type f | sort > inspection/main-files.txt
+          find app/src/test -type f | sort > inspection/test-files.txt || true
+          {
+            echo '=== build.gradle.kts ==='
+            cat app/build.gradle.kts
+            echo
+            echo '=== manifest ==='
+            cat app/src/main/AndroidManifest.xml
+          } > inspection/config.txt
+          grep -RniE 'AudioRecord|SAMPLE_RATE|acceptWaveform|OnlineRecognizer|OfflineRecognizer|read\(|buffer|SpeechTuning|PersianText|PersianNameCorrector|title|Splash|transcriptionGlow|waveform|INTERNET' app/src/main app/src/test > inspection/grep-report.txt || true
+          cp fixes/apply_ui_patch.py inspection/
+          cp fixes/apply_text_patch.py inspection/
+          tar -czf inspection/emrooz-current-source.tgz app/src app/build.gradle.kts settings.gradle.kts build.gradle.kts gradle.properties 2>/dev/null || tar -czf inspection/emrooz-current-source.tgz app/src app/build.gradle.kts settings.gradle.kts build.gradle.kts
+          sha256sum inspection/emrooz-current-source.tgz > inspection/emrooz-current-source.tgz.sha256
+
+      - name: Upload inspection bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v114-Source-Inspection
+          path: inspection/
+          retention-days: 7
