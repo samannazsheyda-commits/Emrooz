@@ -1,0 +1,24 @@
+name: Pin Emrooz Offline Finalizer Model
+
+on:
+  push:
+    branches: [fix/final-v114-rebuild]
+    paths: ['.github/workflows/hash-offline-model-v114.yml']
+  workflow_dispatch:
+
+jobs:
+  hash:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download and hash non-streaming INT8 model
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://huggingface.co/mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-non-streaming-int8-2026-06-26/resolve/main'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o /tmp/model.int8.onnx "$BASE/model.int8.onnx?download=true"
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o /tmp/tokens.txt "$BASE/tokens.txt?download=true"
+          echo OFFLINE_MODEL_SHA256=$(sha256sum /tmp/model.int8.onnx | awk '{print $1}')
+          echo OFFLINE_MODEL_BYTES=$(stat -c%s /tmp/model.int8.onnx)
+          echo OFFLINE_TOKENS_SHA256=$(sha256sum /tmp/tokens.txt | awk '{print $1}')
+          echo OFFLINE_TOKENS_BYTES=$(stat -c%s /tmp/tokens.txt)
