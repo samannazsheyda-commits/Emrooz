@@ -1,0 +1,57 @@
+name: Checksum-guided repair v117 payload
+
+on:
+  push:
+    branches: [fix/final-v117-ui-audio]
+    paths:
+      - '.github/workflows/repair-v117-part00-search.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/final-v117-ui-audio
+      - name: Locate and remove the one corrupt byte
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, base64
+          p = Path('payload/v117.part.00')
+          a = p.read_bytes()
+          rest = b''.join(Path(f'payload/v117.part.0{i}').read_bytes() for i in range(1,5))
+          expected = 'a75bf955e8e31cb7e7477ae20cc24aa5badab6bf48c5bb8c06c30cd7c03c72ed'
+          expected_tgz = '120fbbe7415e87e4cc3be91d2b9b9211a64f6a93a1bf632dc67d9c160d5f90c9'
+          assert len(a) == 18001, len(a)
+          assert len(rest) == 63756, len(rest)
+          hits = []
+          for i in range(len(a)):
+              candidate = a[:i] + a[i+1:] + rest
+              if hashlib.sha256(candidate).hexdigest() == expected:
+                  hits.append((i, a[i], candidate))
+          assert len(hits) == 1, [(i,b) for i,b,_ in hits]
+          i, bad, combined = hits[0]
+          tgz = base64.b64decode(combined, validate=True)
+          assert hashlib.sha256(tgz).hexdigest() == expected_tgz
+          fixed = a[:i] + a[i+1:]
+          assert len(fixed) == 18000
+          p.write_bytes(fixed)
+          print(f'CORRUPT_BYTE_INDEX={i} VALUE={bad}')
+          print('CHECKSUM_REPAIR_OK')
+          PY
+          cat payload/v117.part.0[0-4] > /tmp/v117.b64
+          test "$(wc -c < /tmp/v117.b64)" -eq 81756
+          echo 'a75bf955e8e31cb7e7477ae20cc24aa5badab6bf48c5bb8c06c30cd7c03c72ed  /tmp/v117.b64' | sha256sum -c -
+          base64 -d /tmp/v117.b64 > /tmp/v117.tgz
+          echo '120fbbe7415e87e4cc3be91d2b9b9211a64f6a93a1bf632dc67d9c160d5f90c9  /tmp/v117.tgz' | sha256sum -c -
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add payload/v117.part.00
+          git commit -m 'Repair v1.1.7 payload by reference checksum'
+          git push origin HEAD:fix/final-v117-ui-audio
