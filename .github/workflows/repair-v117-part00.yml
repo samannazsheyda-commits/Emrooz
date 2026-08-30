@@ -1,0 +1,43 @@
+name: Repair v117 payload newline
+
+on:
+  push:
+    branches: [fix/final-v117-ui-audio]
+    paths:
+      - '.github/workflows/repair-v117-part00.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/final-v117-ui-audio
+      - name: Remove accidental trailing newline from part 00
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('payload/v117.part.00')
+          b = p.read_bytes()
+          assert len(b) == 18001, len(b)
+          assert b.endswith(b'\n') or b.endswith(b'\r'), b[-8:]
+          while b.endswith((b'\n', b'\r')):
+              b = b[:-1]
+          assert len(b) == 18000, len(b)
+          p.write_bytes(b)
+          PY
+          cat payload/v117.part.0[0-4] > /tmp/v117.b64
+          test "$(wc -c < /tmp/v117.b64)" -eq 81756
+          echo 'a75bf955e8e31cb7e7477ae20cc24aa5badab6bf48c5bb8c06c30cd7c03c72ed  /tmp/v117.b64' | sha256sum -c -
+          base64 -d /tmp/v117.b64 > /tmp/v117.tgz
+          echo '120fbbe7415e87e4cc3be91d2b9b9211a64f6a93a1bf632dc67d9c160d5f90c9  /tmp/v117.tgz' | sha256sum -c -
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add payload/v117.part.00
+          git commit -m 'Fix v1.1.7 payload trailing newline'
+          git push origin HEAD:fix/final-v117-ui-audio
