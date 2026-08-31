@@ -11,27 +11,21 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Recover partial vNext content
+      - name: Inspect recovered recognizer and base engine
         shell: bash
         run: |
           set -u
+          cat payload/v110.part* | base64 -d > /tmp/base.tar.gz
+          mkdir -p /tmp/base && tar -xzf /tmp/base.tar.gz -C /tmp/base
           cat patch/vnext.part* | base64 -d > /tmp/vnext.gz
-          gzip -dc /tmp/vnext.gz > /tmp/vnext.raw 2>/tmp/gzip.err || true
-          echo '=== SIZES ==='
-          wc -c /tmp/vnext.gz /tmp/vnext.raw
-          cat /tmp/gzip.err || true
-          echo '=== RAW TYPE/HEAD ==='
-          file /tmp/vnext.raw
-          head -c 256 /tmp/vnext.raw | od -An -tc -v
-          echo '=== TAR LIST PARTIAL ==='
-          tar -tvf /tmp/vnext.raw 2>&1 | head -160 || true
+          gzip -dc /tmp/vnext.gz > /tmp/vnext.raw 2>/dev/null || true
           mkdir -p /tmp/recovered
-          tar -xf /tmp/vnext.raw -C /tmp/recovered --ignore-zeros 2>/tmp/tar.err || true
-          cat /tmp/tar.err || true
-          echo '=== RECOVERED FILES ==='
-          find /tmp/recovered -type f | sort | head -220
-          echo '=== KEY FILE CONTENT ==='
-          for f in $(find /tmp/recovered -type f \( -name 'LiveSpeechEngine.kt' -o -name 'PersianText.kt' -o -name 'SpeechTuning.kt' -o -name 'FinalTranscriptSelector.kt' -o -name 'PersianNameCorrector.kt' -o -name 'ShenavaOfflineRecognizer.kt' -o -name 'build.gradle.kts' \)); do
-            echo "----- $f -----"
-            sed -n '1,260p' "$f"
-          done
+          tar -xf /tmp/vnext.raw -C /tmp/recovered --ignore-zeros 2>/dev/null || true
+          echo '=== RECOVERED SHENAVA ==='
+          sed -n '1,260p' /tmp/recovered/app/src/main/java/com/nameemrooz/journal/speech/ShenavaRecognizer.kt
+          echo '=== BASE ENGINE ==='
+          sed -n '1,320p' /tmp/base/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          echo '=== RECOVERED MAIN ==='
+          sed -n '1,220p' /tmp/recovered/app/src/main/java/com/nameemrooz/journal/MainActivity.kt
+          echo '=== RECOVERED TEST ==='
+          sed -n '1,220p' /tmp/recovered/app/src/test/java/com/nameemrooz/journal/util/PersianTextVNextTest.kt
