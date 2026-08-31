@@ -7,14 +7,19 @@ import org.junit.Test
 import java.io.File
 
 /**
- * RED characterization tests for the v1.2.5 failures reported on a physical device.
- * These intentionally run against the reconstructed v1.2.5 source before any v1.2.6
- * production overlay is applied.
+ * Characterization tests for the three v1.2.5 architecture failures reported on
+ * a physical device. They stay valid after v1.2.6 splits microphone capture out
+ * of LiveSpeechEngine into AudioCaptureSource.
  */
 class V126ArchitectureRedTest {
     @Test
     fun productionCaptureMustNotStackThreeGainStages() {
-        val source = File("src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt").readText()
+        val splitCapture = File("src/main/java/com/nameemrooz/journal/speech/AudioCaptureSource.kt")
+        val source = if (splitCapture.exists()) {
+            splitCapture.readText()
+        } else {
+            File("src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt").readText()
+        }
         assertTrue(source.contains("MediaRecorder.AudioSource.VOICE_RECOGNITION"))
         assertFalse("software AdaptiveSpeechGain must be removed", source.contains("AdaptiveSpeechGain()"))
         assertFalse("Android AGC must not be stacked", source.contains("AutomaticGainControl"))
