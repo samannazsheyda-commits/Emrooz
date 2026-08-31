@@ -58,11 +58,13 @@ jobs:
           set -euo pipefail
           UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
           ENGINE='app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt'
-          echo '=== CLOCK/DATE CALLS ==='
-          grep -n -A80 -B20 'DoranTimeLine' "$UI" | head -n 220
-          echo '=== DORAN DATE ==='
-          grep -n -A160 -B20 'fun DoranDateLine' "$UI" | head -n 240
-          echo '=== FONT DECLARATIONS ==='
-          grep -n -E 'FontFamily|Font\(|vazirmatn|noto_naskh' "$UI" | head -n 120 || true
+          echo '=== WEEKDAY MAP ==='
+          grep -n -A45 -B5 'fun doranWeekdayRes' "$UI" || true
+          echo '=== MONTH MAP ==='
+          grep -n -A45 -B5 'fun doranMonthRes' "$UI" || true
+          echo '=== JALALI PARTS ==='
+          grep -Rni -A100 -B10 'object JalaliDate\|class JalaliDate' app/src/main/java | head -n 180 || true
+          echo '=== CURRENT CLOCK ==='
+          grep -n -A45 -B5 'private fun CurrentClockAndDate' "$UI"
           echo '=== LIVE EMIT ==='
-          grep -n -A80 -B30 'partial = try' "$ENGINE" | head -n 180
+          grep -n -A55 -B15 'partial = try' "$ENGINE"
