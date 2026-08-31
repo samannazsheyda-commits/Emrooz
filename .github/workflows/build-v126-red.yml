@@ -66,6 +66,7 @@ jobs:
           python3 overlay/v125/apply_v125.py
 
           mkdir -p app/src/main/res/font app/src/test/java/v126red
+          curl -L --fail --retry 4 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/noto_naskh_arabic.ttf 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
           curl -L --fail --retry 4 -o app/src/main/res/font/vazirmatn_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
           curl -L --fail --retry 4 -o app/src/main/res/font/vazirmatn_semibold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
           cp overlay/v126/tests/V126ArchitectureRedTest.kt app/src/test/java/v126red/
