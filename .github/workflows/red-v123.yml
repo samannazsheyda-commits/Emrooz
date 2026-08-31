@@ -46,6 +46,7 @@ jobs:
           python3 overlay/v119/apply_v119.py
           cp overlay/v121/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/
           python3 overlay/v121/apply_v121.py
+          rm -f app/src/main/java/com/nameemrooz/journal/speech/ShenavaOfflineModelSpec.kt
           cp overlay/v122/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/
           python3 overlay/v122/apply_v122.py
       - name: Restore build-only resources
@@ -104,4 +105,5 @@ jobs:
           cat /tmp/red.log
           test "$rc" -ne 0
           grep -Eq 'FinalTranscriptPolicyV123Test|PersianEditorV123Test' /tmp/red.log
+          ! grep -q 'Compilation error' /tmp/red.log
           echo V123_RED_CONFIRMED
