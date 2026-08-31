@@ -3,27 +3,49 @@ import re
 
 ROOT = Path('.')
 
-# Keep the vNext UI but reduce the logo used by the app's own privacy/splash intro.
+# Keep the vNext UI but make the actual Compose intro/splash logo noticeably smaller.
 ui = ROOT / 'app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
 s = ui.read_text(encoding='utf-8')
+pattern = re.compile(
+    r'(painter\s*=\s*painterResource\(R\.drawable\.emrooz_logo\).*?'
+    r'modifier\s*=\s*Modifier)\.fillMaxWidth\(\s*0?\.48f?\s*\)(\.aspectRatio\(\s*1\.9f\s*\))',
+    re.S,
+)
+s, logo_hits = pattern.subn(r'\1.fillMaxWidth(0.34f)\2', s, count=1)
+if logo_hits == 0:
+    # Exact fallback for the recovered vNext UI.
+    s, logo_hits = re.subn(
+        r'modifier\s*=\s*Modifier\.fillMaxWidth\(\s*0?\.48f?\s*\)\.aspectRatio\(\s*1\.9f\s*\)',
+        'modifier = Modifier.fillMaxWidth(0.34f).aspectRatio(1.9f)',
+        s,
+        count=1,
+    )
+if logo_hits == 0:
+    raise SystemExit('Could not locate the Emrooz intro logo sizing rule')
+ui.write_text(s, encoding='utf-8')
+
 idx = s.find('R.drawable.emrooz_logo')
-if idx >= 0:
-    a, b = max(0, idx - 900), min(len(s), idx + 1200)
-    segment = s[a:b]
-    before = segment
-    segment, size_hits = re.subn(r'\.size\(\s*\d+(?:\.\d+)?\.dp\s*\)', '.size(124.dp)', segment, count=1)
-    if size_hits == 0:
-        segment, width_hits = re.subn(r'\.fillMaxWidth\(\s*0?\.\d+f?\s*\)', '.fillMaxWidth(0.46f)', segment, count=1)
-    else:
-        width_hits = 0
-    s = s[:a] + segment + s[b:]
-    ui.write_text(s, encoding='utf-8')
-    print('intro_logo_found=1 size_hits=', size_hits, 'width_hits=', width_hits)
-    print('intro_logo_context_after:')
-    idx2 = s.find('R.drawable.emrooz_logo')
-    print(s[max(0, idx2-300): min(len(s), idx2+500)])
-else:
-    print('intro_logo_found=0')
+print('intro_logo_hits=', logo_hits)
+print('intro_logo_context_after:')
+print(s[max(0, idx - 280): min(len(s), idx + 480)])
+if 'fillMaxWidth(0.34f).aspectRatio(1.9f)' not in s[max(0, idx - 500): min(len(s), idx + 800)]:
+    raise SystemExit('Emrooz intro logo did not reach target 0.34f width')
+
+# The vNext archive is truncated at its final PNG. Remove only malformed PNG files
+# (missing the mandatory PNG signature/IEND chunk) so Android can fall back to another density.
+removed = []
+for p in (ROOT / 'app/src/main/res').rglob('*.png'):
+    data = p.read_bytes()
+    valid = (
+        len(data) >= 20
+        and data.startswith(b'\x89PNG\r\n\x1a\n')
+        and data[-12:-8] == b'\x00\x00\x00\x00'
+        and data[-8:-4] == b'IEND'
+    )
+    if not valid:
+        removed.append(str(p))
+        p.unlink()
+print('removed_malformed_pngs=', removed)
 
 # Conservative Persian spelling/orthography fixes. Do not paraphrase the speaker.
 persian = ROOT / 'app/src/main/java/com/nameemrooz/journal/util/PersianText.kt'
