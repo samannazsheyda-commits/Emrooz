@@ -1,0 +1,39 @@
+name: Diagnose v1.1.9 patch targets
+on:
+  push:
+    branches: [fix/v118-preserve-ui-speech-only]
+    paths: ['.github/workflows/diag-v119-targets.yml']
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: reconstruct
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz; tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py; python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz; tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          cat payload/v116.vec.* | base64 -d > /tmp/v116.tgz; tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* | base64 -d > /tmp/v117.tgz; tar -xzf /tmp/v117.tgz -C .
+          cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          python3 overlay/v118/apply_v118.py
+      - name: print-targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -n '520,615p' "$UI"
+          echo '=== transcriptionGlow source ==='
+          grep -R -n -B 20 -A 100 'fun .*transcriptionGlow\|transcriptionGlow' app/src/main/java | head -n 500 || true
+          echo '=== selector ==='
+          sed -n '1,360p' app/src/main/java/com/nameemrooz/journal/speech/FinalTranscriptSelector.kt
+          echo '=== tuning ==='
+          sed -n '1,260p' app/src/main/java/com/nameemrooz/journal/speech/SpeechTuning.kt
