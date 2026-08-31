@@ -1,0 +1,25 @@
+name: Hash v1.2.2 Speech Models
+
+on:
+  push:
+    branches: [fix/v122-accuracy-ui]
+    paths: ['.github/workflows/hash-v122-models.yml']
+
+jobs:
+  hash:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and hash pinned model candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          get() { out="$1"; url="$2"; curl -L --fail --retry 6 --retry-all-errors --retry-delay 3 --connect-timeout 30 --max-time 1800 -A 'Emrooz-v122' -o "$out" "$url"; }
+          R='mah92/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-v1.0-streaming-int8-2026-06-26'
+          K='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-non-streaming-int8-2026-06-26'
+          get /tmp/rizeh.onnx "https://huggingface.co/$R/resolve/main/model.int8.onnx?download=true"
+          get /tmp/rizeh.tokens "https://huggingface.co/$R/resolve/main/tokens.txt?download=true"
+          get /tmp/koochik-final.onnx "https://huggingface.co/$K/resolve/main/model.int8.onnx?download=true"
+          get /tmp/koochik-final.tokens "https://huggingface.co/$K/resolve/main/tokens.txt?download=true"
+          sha256sum /tmp/rizeh.onnx /tmp/rizeh.tokens /tmp/koochik-final.onnx /tmp/koochik-final.tokens
+          du -h /tmp/rizeh.onnx /tmp/koochik-final.onnx
