@@ -54,6 +54,29 @@ if '"میخام" to "می‌خوام"' not in s:
     if marker not in s:
         raise SystemExit('phraseFixes marker not found')
     s = s.replace(marker, marker + additions, 1)
+
+# vNext had accidentally dropped two useful legacy behaviours:
+# spoken punctuation words ("نقطه", "ویرگول", "علامت سوال") and conversational
+# question cues such as "امروز میای خونه". Restore them while keeping vNext rules.
+if 'spokenPunctuationFixesV116' not in s:
+    question_anchor = '    private val questionStarts = listOf(\n'
+    if question_anchor not in s:
+        raise SystemExit('questionStarts marker not found')
+    legacy_block = '''    private val spokenPunctuationFixesV116 = listOf(\n        Regex("\\\\s+علامت\\\\s+س[ؤو]ال\\\\s+") to "؟ ",\n        Regex("\\\\s+سه\\\\s+نقطه\\\\s+") to "... ",\n        Regex("\\\\s+دو\\\\s+نقطه\\\\s+") to ": ",\n        Regex("\\\\s+(?:ویرگول|کاما)\\\\s+") to "، ",\n        Regex("\\\\s+نقطه\\\\s+") to ". "\n    )\n\n    private val conversationalQuestionHintsV116 = listOf(\n        "میای", "می‌آی", "می‌خوای", "میخوای", "می‌تونی", "میتونی", "هستی"\n    )\n\n'''
+    s = s.replace(question_anchor, legacy_block + question_anchor, 1)
+
+    old_question = '        val isQuestion = questionStarts.any { trimmed.startsWith(it) } ||\n'
+    new_question = '        val isQuestion = questionStarts.any { trimmed.startsWith(it) } ||\n            conversationalQuestionHintsV116.any { trimmed.contains(it) } ||\n'
+    if old_question not in s:
+        raise SystemExit('finalPunctuation question expression not found')
+    s = s.replace(old_question, new_question, 1)
+
+    loop_anchor = '''        phraseFixes.forEach { (from, to) ->\n            t = t.replace(from, to, ignoreCase = false)\n        }\n\n'''
+    if loop_anchor not in s:
+        raise SystemExit('phraseFixes loop not found')
+    spoken_apply = '''        phraseFixes.forEach { (from, to) ->\n            t = t.replace(from, to, ignoreCase = false)\n        }\n\n        t = " $t "\n        spokenPunctuationFixesV116.forEach { (pattern, replacement) ->\n            t = t.replace(pattern, replacement)\n        }\n        t = t.trim()\n\n'''
+    s = s.replace(loop_anchor, spoken_apply, 1)
+
 persian.write_text(s, encoding='utf-8')
 
 # Clean stale Compose imports found in staged vNext copies.
@@ -76,7 +99,6 @@ s, room_hits = re.subn(
     s,
 )
 if room_hits < 3:
-    # Be tolerant if a staged build file already has another 2.x version, but make all three consistent.
     s, room_hits_any = re.subn(
         r'(androidx\.room:room-(?:runtime|ktx|compiler):)2\.\d+\.\d+',
         r'\g<1>2.8.4',
