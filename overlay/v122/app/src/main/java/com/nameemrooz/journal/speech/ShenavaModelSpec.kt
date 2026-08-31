@@ -13,6 +13,6 @@ object ShenavaModelSpec {
 
 /** Full-context Koochik model: used once after Stop for the saved final text. */
 object ShenavaOfflineModelSpec {
-    const val modelPath: String = "models/shenava_koochik_final/model.onnx"
-    const val tokensPath: String = "models/shenava_koochik_final/tokens.txt"
+    const val modelPath: String = "models/shenava_v10_ctc_offline/model.onnx"
+    const val tokensPath: String = "models/shenava_v10_ctc_offline/tokens.txt"
 }
