@@ -1,0 +1,63 @@
+name: Inspect exact v1.1.7 speech source
+
+on:
+  push:
+    branches: [fix/v118-preserve-ui-speech-only]
+    paths:
+      - '.github/workflows/inspect-v117-speech.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact v1.1.7 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          echo '3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/base.tgz' | sha256sum -c -
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114.tgz' | sha256sum -c -
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          cat payload/v116.vec.* > /tmp/v116.vec.b64
+          test "$(wc -c < /tmp/v116.vec.b64)" -eq 171024
+          echo '2a0cde7c006f090bea54ec4aac7cff82839340ed140893e64dec36183ca73f22  /tmp/v116.vec.b64' | sha256sum -c -
+          base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz
+          echo '468b2c892f05ffa25f6a59597fa0405d1903303f407656d52fe14814425caebd  /tmp/v116.tgz' | sha256sum -c -
+          tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* > /tmp/v117.b64
+          test "$(wc -c < /tmp/v117.b64)" -eq 81756
+          echo 'a75bf955e8e31cb7e7477ae20cc24aa5badab6bf48c5bb8c06c30cd7c03c72ed  /tmp/v117.b64' | sha256sum -c -
+          base64 -d /tmp/v117.b64 > /tmp/v117.tgz
+          echo '120fbbe7415e87e4cc3be91d2b9b9211a64f6a93a1bf632dc67d9c160d5f90c9  /tmp/v117.tgz' | sha256sum -c -
+          tar -xzf /tmp/v117.tgz -C .
+      - name: Print immutable UI hashes and speech files
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== UI / branding hashes ==='
+          sha256sum \
+            app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/res/drawable-nodpi/app_icon_exact.xml \
+            app/src/main/res/drawable-nodpi/splash_logo_exact.xml \
+            app/src/main/res/drawable-nodpi/doran_today_letter.xml \
+            app/src/main/res/drawable-nodpi/doran_tagline.xml
+          echo '=== LiveSpeechEngine.kt ==='
+          sed -n '1,320p' app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          echo '=== ShenavaRecognizer.kt ==='
+          sed -n '1,260p' app/src/main/java/com/nameemrooz/journal/speech/ShenavaRecognizer.kt
+          echo '=== PersianText.kt ==='
+          sed -n '1,360p' app/src/main/java/com/nameemrooz/journal/util/PersianText.kt
+          echo '=== tests ==='
+          find app/src/test -type f -maxdepth 8 -print | sort
