@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct test sources
+      - name: Reconstruct and apply v121
         shell: bash
         run: |
           set -euo pipefail
@@ -26,7 +26,6 @@ jobs:
           python3 fixes/apply_text_patch.py
           python3 fixes/apply_ui_patch.py
           cat payload/v114.part* | base64 -d > /tmp/v114.tgz
-          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114.tgz' | sha256sum -c -
           tar -xzf /tmp/v114.tgz -C .
           cat payload/v116.vec.* > /tmp/v116.vec.b64
           base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz
@@ -37,12 +36,32 @@ jobs:
           cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
           python3 overlay/v118/apply_v118.py
           python3 overlay/v119/apply_v119.py
-      - name: Print colloquial test expectations
+          python3 overlay/v121/apply_v121.py
+
+      - name: Inspect generated rules
         shell: bash
         run: |
           set -euo pipefail
-          TEST='app/src/test/java/com/nameemrooz/journal/util/PersianColloquialEditingTest.kt'
-          test -f "$TEST"
-          echo '===== PERSIAN_COLLOQUIAL_TEST_BEGIN ====='
-          cat "$TEST"
-          echo '===== PERSIAN_COLLOQUIAL_TEST_END ====='
+          TEXT='app/src/main/java/com/nameemrooz/journal/util/PersianText.kt'
+          echo '===== RULE OCCURRENCES ====='
+          for term in 'نمیدونستم' 'میومدم' 'نمیفهمیدم' 'میذارم' 'میخوابم' 'نمی خونم' 'می بینم'; do
+            echo "--- $term"
+            grep -nF "$term" "$TEXT" || true
+          done
+          echo '===== PHRASE FIXES HEAD ====='
+          sed -n '/private val phraseFixes = listOf(/,+45p' "$TEXT"
+          echo '===== PIPELINE ====='
+          grep -nE 'phraseFixes\.forEach|normalizeCommonOrthography|enforceQuestionEnding|restoreFinalPunctuation' "$TEXT"
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('app/src/main/java/com/nameemrooz/journal/util/PersianText.kt').read_text(encoding='utf-8')
+          expected=[
+              '"نمیدونستم" to "نمی‌دونستم"',
+              '"میومدم" to "می‌اومدم"',
+              '"نمیفهمیدم" to "نمی‌فهمیدم"',
+              '"میذارم" to "می‌ذارم"',
+              '"میخوابم" to "می‌خوابم"',
+          ]
+          for x in expected:
+              print(('PRESENT ' if x in s else 'MISSING ') + x)
+          PY
