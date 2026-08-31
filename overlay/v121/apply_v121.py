@@ -18,7 +18,7 @@ UI.write_text(s, encoding='utf-8')
 # 2) Strengthen spelling/orthography without paraphrasing or changing meaning.
 s = TEXT.read_text(encoding='utf-8')
 marker = '    private val phraseFixes = listOf(\n'
-extra_rules = '''        "نمی خونم" to "نمی‌خونم", "نمیخونم" to "نمی‌خونم",\n        "می خونم" to "می‌خونم", "میخونم" to "می‌خونم",\n        "نمی بینم" to "نمی‌بینم", "نمیبینم" to "نمی‌بینم",\n        "می بینم" to "می‌بینم", "میبینم" to "می‌بینم",\n'''
+extra_rules = '''        "نمی خونم" to "نمی‌خونم", "نمیخونم" to "نمی‌خونم",\n        "می خونم" to "می‌خونم", "میخونم" to "می‌خونم",\n        "نمی بینم" to "نمی‌بینم", "نمیبینم" to "نمی‌بینم",\n        "می بینم" to "می‌بینم", "میبینم" to "می‌بینم",\n        "نمی دونستم" to "نمی‌دونستم", "نمیدونستم" to "نمی‌دونستم",\n        "می اومدم" to "می‌اومدم", "میومدم" to "می‌اومدم",\n        "نمی فهمیدم" to "نمی‌فهمیدم", "نمیفهمیدم" to "نمی‌فهمیدم",\n        "می ذارم" to "می‌ذارم", "میذارم" to "می‌ذارم",\n        "می خوابم" to "می‌خوابم", "میخوابم" to "می‌خوابم",\n'''
 if '"نمی خونم" to "نمی‌خونم"' not in s:
     if marker not in s:
         raise SystemExit('phraseFixes marker missing')
