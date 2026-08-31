@@ -1,0 +1,24 @@
+name: Inspect Persian Text Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/inspect-persian-tests.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print legacy tests and current Persian editor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tar.gz
+          mkdir -p /tmp/base
+          tar -xzf /tmp/base.tar.gz -C /tmp/base
+          echo '=== PersianTextTest.kt ==='
+          sed -n '1,220p' /tmp/base/app/src/test/java/com/nameemrooz/journal/util/PersianTextTest.kt
+          echo '=== Base PersianText.kt ==='
+          sed -n '1,280p' /tmp/base/app/src/main/java/com/nameemrooz/journal/util/PersianText.kt
