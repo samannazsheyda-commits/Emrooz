@@ -48,9 +48,9 @@ A lightweight offline VAD/endpoint detector splits speech into short utterance s
 
 Target behavior:
 
-- close a segment after roughly 450–650 ms of confirmed silence;
-- hard-cap a speech segment at about 12 seconds;
-- retain a small overlap (about 200–300 ms) between adjacent segments where needed;
+- close a segment after 500 ms of confirmed silence, tunable only within 450–650 ms by benchmark evidence;
+- hard-cap a speech segment at 12 seconds;
+- retain 250 ms overlap between adjacent forced segments when a hard cap is reached;
 - process completed segments immediately in the background;
 - discard their PCM from RAM as soon as final text has been produced.
 
@@ -66,8 +66,8 @@ Behavior:
 
 - compare consecutive hypotheses;
 - commit only a stable word prefix;
-- normally require two consistent hypotheses rather than three;
-- target 250–600 ms stability depending on hypothesis agreement;
+- require two consistent hypotheses under normal conditions;
+- stability delay may vary from 250–600 ms based on hypothesis agreement, but no fixed stabilizer delay above 600 ms is allowed;
 - never retract committed live words;
 - never emit a one-off unstable guess;
 - apply only lightweight Unicode/spacing cleanup to live text;
@@ -85,7 +85,7 @@ When Stop is pressed:
 
 - only the currently open segment remains to finalize;
 - already finalized segments are not decoded again;
-- final Stop latency therefore should not grow linearly with total session duration.
+- final Stop latency therefore must not grow linearly with total session duration.
 
 ### 5. Model bake-off before choosing production models
 
@@ -107,7 +107,7 @@ Score each candidate on:
 - peak RAM;
 - model-load time.
 
-Selection priority is: final accuracy first, then latency, then size. A candidate that is only slightly more accurate but causes unacceptable multi-second pauses is rejected.
+Selection priority is: final accuracy first, then latency, then size. A final-model candidate is rejected if its median decode real-time factor is above 1.0 on the same reference benchmark runner or if its median model-load time is above 2.5 seconds there, unless it improves weighted WER by at least 20% relative to the next-best candidate and still satisfies the Stop-latency gate.
 
 ### 6. Final transcript selection and merging
 
@@ -161,6 +161,8 @@ Text domains:
 
 Where external audio fixtures are used, they must have a compatible redistribution/test license and be pinned by checksum. Synthetic fixtures may supplement but may not be the only accuracy evidence.
 
+The fixture pack is versioned and frozen before model comparison. v1.2.5 and every v1.2.6 candidate are scored on exactly the same files and transcripts.
+
 ## Ten release gates
 
 A release candidate is not published unless all ten gates pass.
@@ -176,39 +178,45 @@ A release candidate is not published unless all ten gates pass.
 
 - silence closes segments reliably;
 - no missing first/last words at boundaries;
-- overlap merge has no duplicate phrases.
+- overlap merge has no duplicate phrases;
+- boundary tests cover normal silence, very short silence, forced 12-second split, and trailing speech at Stop.
 
 ### Gate 3 — Live stability
 
 - one-off hypotheses are not shown;
-- stable live text appears quickly;
-- committed live text is monotonic and is not repeatedly rewritten.
+- committed live text is monotonic and is not repeatedly rewritten;
+- on the reference fixture benchmark, median first stable text must be no slower than 1.0 second from speech onset and p95 no slower than 1.5 seconds;
+- if host timing cannot represent device timing reliably, the same hardware/runner must be used for v1.2.5 and v1.2.6 and v1.2.6 must be at least 20% faster in median first-stable-text latency.
 
 ### Gate 4 — Final ASR accuracy
 
 - measure WER/CER on the fixed Persian fixture pack;
-- v1.2.6 must beat v1.2.5 on the same fixture set;
-- if the new architecture does not produce a meaningful accuracy improvement, do not release it.
+- weighted WER of v1.2.6 must improve by at least 10% relative versus v1.2.5 on the same fixture set;
+- no protected category (names, numbers, repeated emphasis) may regress by more than 5% relative;
+- if these thresholds are not met, do not release the candidate.
 
 ### Gate 5 — Editor fidelity
 
 - all existing editor regressions pass;
 - new broad morphology/spacing tests pass;
-- names, numbers and intentional repetitions are preserved;
-- editor output must not increase semantic error versus raw final ASR on the fixture set.
+- protected names, numbers and intentional repetitions have 100% preservation in deterministic editor tests;
+- editor output must not increase fixture WER versus raw final ASR;
+- any lexical correction that changes a protected token fails the gate.
 
 ### Gate 6 — Stop latency
 
 - completed segments are not reprocessed on Stop;
 - Stop finalizes only the open tail segment;
-- algorithmic tests prove finalization work is bounded by tail length, not total session length.
+- a 10-minute synthetic session with the same final 5-second tail must perform no more than 10% additional finalization work versus a 30-second session with that same tail;
+- no full-session PCM array may be allocated during Stop.
 
 ### Gate 7 — Memory / long sessions
 
 - no whole-session PCM retention;
 - processed PCM is zeroed/discarded;
 - queue sizes are bounded;
-- 10+ minute synthetic session does not show linear RAM growth.
+- after model warm-up, a 10-minute synthetic session may not show sustained PCM/session-memory growth proportional to duration;
+- retained PCM after finalized segments must remain bounded by the configured ring buffer plus one active/tail segment.
 
 ### Gate 8 — Privacy / permissions
 
@@ -221,9 +229,10 @@ A release candidate is not published unless all ten gates pass.
 
 - v1.2.5 visual structure remains intact;
 - clock/date continue to use the real text font renderer;
-- journal save/archive/resume behavior passes existing tests.
+- journal save/archive/resume behavior passes existing tests;
+- speech-state UI must not display raw one-off ASR guesses.
 
-### Gate 10 — APK verification
+### Gate 10 — APK verification and ten-pass reliability audit
 
 - complete unit/regression suite passes;
 - Android lint passes;
@@ -231,23 +240,24 @@ A release candidate is not published unless all ten gates pass.
 - unzip integrity passes;
 - expected model assets are present and no obsolete model is bundled;
 - package/version are correct;
-- APK checksum is emitted.
+- APK checksum is emitted;
+- the deterministic speech/editor/segmentation regression suite must pass 10 consecutive iterations with zero failures before release.
 
 ## Performance targets
 
 These are release targets, not promises for every Android device:
 
-- stable live text should normally appear within about 1 second of clear speech onset;
+- stable live text normally appears within 1 second of clear speech onset on the reference benchmark path;
 - no deliberate fixed delay above 600 ms solely for text stabilization;
-- Stop should normally require only the tail-segment finalization rather than replaying the full recording;
-- long-session RAM use must remain approximately bounded after model memory is accounted for.
+- Stop performs only tail-segment finalization rather than replaying the full recording;
+- long-session RAM use remains bounded after model memory is accounted for.
 
 If measured accuracy requires a trade-off, final transcription accuracy has priority over instantaneous live text, but the UI must not show obviously unstable garbage.
 
 ## Failure handling
 
 - If final recognizer fails for one segment, keep the stable live text for that segment and continue recording.
-- If VAD fails, fall back to a conservative maximum-segment timer rather than losing audio.
+- If VAD fails, fall back to the 12-second maximum-segment timer rather than losing audio.
 - If memory pressure prevents loading the final model, retain live text and show a non-destructive error; do not crash or erase the entry.
 - If a model candidate fails the benchmark or Android compatibility checks, exclude it rather than adding runtime complexity.
 
