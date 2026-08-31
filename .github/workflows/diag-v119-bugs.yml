@@ -1,0 +1,54 @@
+name: Diagnose Emrooz v1.1.9 bugs
+
+on:
+  push:
+    branches: [fix/v118-preserve-ui-speech-only]
+    paths:
+      - '.github/workflows/diag-v119-bugs.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact v1.1.8 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          cat payload/v116.vec.* | base64 -d > /tmp/v116.tgz
+          tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* | base64 -d > /tmp/v117.tgz
+          tar -xzf /tmp/v117.tgz -C .
+          cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          python3 overlay/v118/apply_v118.py
+      - name: Print clock, glow, splash and name corrector
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          echo '=== CurrentClockAndDate ==='
+          grep -n -A 120 -B 20 'fun CurrentClockAndDate' "$UI" || true
+          echo '=== glow refs ==='
+          grep -n -A 80 -B 40 -Ei 'TranscriptionGlow|glow|blur|clip\(|RoundedCornerShape|listening' "$UI" | head -n 1000 || true
+          echo '=== splash ==='
+          grep -n -A 30 -B 15 'splash_logo_exact' "$UI" || true
+          echo '=== typography/font refs ==='
+          grep -n -Ei 'FontFamily|fontFamily|R\.font|noto|vazir|doran' "$UI" | head -n 400 || true
+          echo '=== font files ==='
+          find app/src/main/res -type f | grep '/font\|doran\|vazir\|noto' | sort || true
+          echo '=== PersianNameCorrector ==='
+          sed -n '1,520p' app/src/main/java/com/nameemrooz/journal/util/PersianNameCorrector.kt
+          echo '=== PersianText ==='
+          sed -n '1,520p' app/src/main/java/com/nameemrooz/journal/util/PersianText.kt
