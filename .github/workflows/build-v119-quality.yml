@@ -1,0 +1,289 @@
+name: Build Emrooz v1.1.9 Quality Fix
+
+on:
+  push:
+    branches: [fix/v119-quality]
+    paths:
+      - 'overlay/v119/**'
+      - '.github/workflows/build-v119-quality.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  TZ: Asia/Tehran
+
+jobs:
+  verify-build-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact v1.1.8 tested baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          echo '3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/base.tgz' | sha256sum -c -
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114.tgz' | sha256sum -c -
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          cat payload/v116.vec.* > /tmp/v116.vec.b64
+          echo '2a0cde7c006f090bea54ec4aac7cff82839340ed140893e64dec36183ca73f22  /tmp/v116.vec.b64' | sha256sum -c -
+          base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz
+          echo '468b2c892f05ffa25f6a59597fa0405d1903303f407656d52fe14814425caebd  /tmp/v116.tgz' | sha256sum -c -
+          tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* > /tmp/v117.b64
+          echo 'a75bf955e8e31cb7e7477ae20cc24aa5badab6bf48c5bb8c06c30cd7c03c72ed  /tmp/v117.b64' | sha256sum -c -
+          base64 -d /tmp/v117.b64 > /tmp/v117.tgz
+          echo '120fbbe7415e87e4cc3be91d2b9b9211a64f6a93a1bf632dc67d9c160d5f90c9  /tmp/v117.tgz' | sha256sum -c -
+          tar -xzf /tmp/v117.tgz -C .
+          cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          python3 overlay/v118/apply_v118.py
+          grep -Fq 'applicationId = "com.nameemrooz.journal.v118final"' app/build.gradle.kts
+          grep -Fq 'versionName = "1.1.8"' app/build.gradle.kts
+
+      - name: RED structural gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          TEXT='app/src/main/java/com/nameemrooz/journal/util/PersianText.kt'
+          NAMES='app/src/main/java/com/nameemrooz/journal/util/PersianNameCorrector.kt'
+          grep -Fq 'Modifier.fillMaxWidth(0.55f).height(160.dp)' "$UI"
+          grep -Fq 'JalaliDate.time(now)' "$UI"
+          grep -Fq 'fontFamily = UiFont' "$UI"
+          grep -Fq '.transcriptionGlow(converting)' "$UI"
+          ! grep -Fq '.clip(shape)' "$UI" || true
+          grep -Fq 'text = removeFillers(text)' "$TEXT"
+          grep -Fq 'text = normalizeSpokenNumbers(text)' "$TEXT"
+          grep -Fq 'text = collapseRepeatedPhrases(text)' "$TEXT"
+          ! grep -Fq 'private val givenNameAliases' "$NAMES"
+          cp overlay/v119/tests/PersianQualityV119Test.kt app/src/test/java/com/nameemrooz/journal/util/PersianQualityV119Test.kt
+          echo RED_STRUCTURE_CONFIRMED
+
+      - name: Bundle unchanged runtime fonts and lexicons
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res/font app/src/main/assets/lexicon
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/noto_naskh_arabic.ttf 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_semibold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+          curl -L --fail --retry 5 --retry-all-errors -o /tmp/names.json 'https://raw.githubusercontent.com/nabidam/persian-names/68f5cb39a25c19ecaf6f60f3181aea200f8206f8/names.json'
+          curl -L --fail --retry 5 --retry-all-errors -o /tmp/surnames.csv 'https://raw.githubusercontent.com/farbodbj/iranian-surname-frequencies/9fb2fdccb62445b52e933d4d7929a52e01bd6011/iranian-surname-frequencies.csv'
+          python3 - <<'PY'
+          import csv,json
+          from pathlib import Path
+          def norm(v): return (v or '').strip().replace('ي','ی').replace('ى','ی').replace('ك','ک').replace('ة','ه')
+          lex=Path('app/src/main/assets/lexicon')
+          d=json.loads(Path('/tmp/names.json').read_text(encoding='utf-8-sig'))
+          names={norm(x) for x in d.keys() if norm(x)}
+          names.update({'سهیل','روح‌الله','روح الله'})
+          (lex/'persian_first_names.txt').write_text('\n'.join(sorted(names))+'\n',encoding='utf-8')
+          surnames={}
+          with open('/tmp/surnames.csv',encoding='utf-8-sig',newline='') as f:
+              for row in csv.DictReader(f):
+                  n=norm(row.get('name',''))
+                  if not n: continue
+                  try: freq=float(row.get('frequency',0) or 0)
+                  except ValueError: freq=0.0
+                  surnames[n]=max(surnames.get(n,0),max(1,int(round(freq*1_000_000_000))))
+          surnames['ممدوحی']=max(surnames.get('ممدوحی',0),1)
+          with (lex/'persian_surnames.tsv').open('w',encoding='utf-8') as f:
+              for n,score in sorted(surnames.items()): f.write(f'{n}\t{score}\n')
+          PY
+
+      - name: Download and pin unchanged CTC models
+        shell: bash
+        run: |
+          set -euo pipefail
+          STREAM='app/src/main/assets/models/shenava_v10_ctc'; FINAL='app/src/main/assets/models/shenava_v10_ctc_offline'
+          mkdir -p "$STREAM" "$FINAL"
+          get() { out="$1"; primary="$2"; fallback="$3"; rm -f "$out"; curl -L --fail --retry 4 --retry-all-errors --retry-delay 3 --connect-timeout 30 --max-time 900 -A 'Emrooz-v119' -o "$out" "$primary" || { rm -f "$out"; curl -L --fail --retry 8 --retry-all-errors --retry-delay 8 --connect-timeout 30 --max-time 1200 -A 'Emrooz-v119' -o "$out" "$fallback"; }; }
+          SR='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-streaming-int8-2026-06-26'; REV='ae7a6e0f530d30f3a110e26724dca4efce01a85e'
+          FR='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-non-streaming-int8-2026-06-26'
+          get "$STREAM/model.onnx" "https://hf-mirror.com/$SR/resolve/$REV/model.int8.onnx?download=true" "https://huggingface.co/$SR/resolve/$REV/model.int8.onnx?download=true"
+          get "$STREAM/tokens.txt" "https://hf-mirror.com/$SR/resolve/$REV/tokens.txt?download=true" "https://huggingface.co/$SR/resolve/$REV/tokens.txt?download=true"
+          get "$FINAL/model.onnx" "https://hf-mirror.com/$FR/resolve/main/model.int8.onnx?download=true" "https://huggingface.co/$FR/resolve/main/model.int8.onnx?download=true"
+          get "$FINAL/tokens.txt" "https://hf-mirror.com/$FR/resolve/main/tokens.txt?download=true" "https://huggingface.co/$FR/resolve/main/tokens.txt?download=true"
+          echo '439983c95ab83c55c841e0795ba3a61d56718ec5c972a3a208548b93470b04b1  app/src/main/assets/models/shenava_v10_ctc/model.onnx' | sha256sum -c -
+          echo '9d487fc2aa8cdb742a6e2f000be4c25e6b620faf73c9a335fdb310cc7879182e  app/src/main/assets/models/shenava_v10_ctc_offline/model.onnx' | sha256sum -c -
+          echo '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  app/src/main/assets/models/shenava_v10_ctc_offline/tokens.txt' | sha256sum -c -
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.10.2' }
+
+      - name: RED regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          gradle --no-daemon :app:testReleaseUnitTest --tests 'com.nameemrooz.journal.util.PersianQualityV119Test' > /tmp/red.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/red.log
+          if [ "$code" -eq 0 ]; then
+            echo 'Expected v1.1.9 regression tests to fail before patch' >&2
+            exit 1
+          fi
+          grep -q 'PersianQualityV119Test' /tmp/red.log
+          echo RED_TESTS_CONFIRMED
+
+      - name: Snapshot baseline application tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          root=Path('app/src/main')
+          out={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob('*')) if p.is_file()}
+          Path('/tmp/before.json').write_text(json.dumps(out,sort_keys=True),encoding='utf-8')
+          for p in [
+            'app/src/main/res/drawable-nodpi/app_icon_exact.xml',
+            'app/src/main/res/drawable-nodpi/splash_logo_exact.xml',
+            'app/src/main/res/drawable-nodpi/doran_digit_0.xml',
+            'app/src/main/res/drawable-nodpi/doran_month_1.xml',
+            'app/src/main/res/drawable-nodpi/doran_weekday_0.xml']:
+              print(out[p],p)
+          PY
+
+      - name: Apply only approved v1.1.9 fixes
+        run: python3 overlay/v119/apply_v119.py
+
+      - name: Prove visual scope and requirements
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          root=Path('app/src/main')
+          before=json.loads(Path('/tmp/before.json').read_text(encoding='utf-8'))
+          after={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob('*')) if p.is_file()}
+          changed={p for p in set(before)|set(after) if before.get(p)!=after.get(p)}
+          allowed={
+            'app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt',
+            'app/src/main/java/com/nameemrooz/journal/util/PersianText.kt',
+            'app/src/main/java/com/nameemrooz/journal/util/PersianNameCorrector.kt',
+          }
+          assert changed == allowed, f'Unexpected app UI/runtime changes: {sorted(changed)}'
+          for p in [
+            'app/src/main/res/drawable-nodpi/app_icon_exact.xml',
+            'app/src/main/res/drawable-nodpi/splash_logo_exact.xml',
+            'app/src/main/res/drawable-nodpi/doran_digit_0.xml',
+            'app/src/main/res/drawable-nodpi/doran_month_1.xml',
+            'app/src/main/res/drawable-nodpi/doran_weekday_0.xml']:
+              assert before[p] == after[p], p
+          ui=Path('app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt').read_text(encoding='utf-8')
+          assert 'Modifier.fillMaxWidth(0.38f).height(115.dp)' in ui
+          clock=ui[ui.index('private fun CurrentClockAndDate'):ui.index('private fun LetterEditorCard')]
+          assert 'DoranTimeLine(' in clock and 'DoranDateLine(' in clock
+          assert 'JalaliDate.time(now)' not in clock and 'fontFamily = UiFont' not in clock
+          card=ui[ui.index('private fun LetterEditorCard'):ui.index('private fun SoftListeningDot')]
+          assert card.index('.clip(shape)') < card.index('.transcriptionGlow(converting)')
+          print('VISUAL_SCOPE_AND_DORAN_GATES_OK')
+          PY
+          grep -Fq 'applicationId = "com.nameemrooz.journal.v119final"' app/build.gradle.kts
+          grep -Fq 'versionCode = 22' app/build.gradle.kts
+          grep -Fq 'versionName = "1.1.9"' app/build.gradle.kts
+
+      - name: GREEN targeted tests
+        run: gradle --no-daemon --stacktrace :app:testReleaseUnitTest --tests 'com.nameemrooz.journal.util.PersianQualityV119Test' --tests 'com.nameemrooz.journal.util.PersianOrthographyV118Test' --tests 'com.nameemrooz.journal.util.PersianNameCorrectorTest'
+
+      - name: Run complete unit suite
+        run: gradle --no-daemon --stacktrace :app:testReleaseUnitTest
+
+      - name: Android lint
+        run: gradle --no-daemon --stacktrace :app:lintRelease
+
+      - name: Generate install-safe signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          keytool -genkeypair -keystore signing/emrooz-release.jks -storepass Emrooz2026Release -alias emrooz -keypass Emrooz2026Release -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Emrooz v119 CI,OU=Android,O=Emrooz,C=IR'
+          cat > signing/keystore.properties <<'EOF'
+          storeFile=signing/emrooz-release.jks
+          storePassword=Emrooz2026Release
+          keyAlias=emrooz
+          keyPassword=Emrooz2026Release
+          EOF
+
+      - name: Build release APK
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Verify APK independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/release/app-release.apk'
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zipcheck
+          grep -q 'No errors detected' /tmp/zipcheck
+          unzip -l "$APK" | grep -q 'assets/models/shenava_v10_ctc/model.onnx'
+          unzip -l "$APK" | grep -q 'assets/models/shenava_v10_ctc_offline/model.onnx'
+          unzip -l "$APK" | grep -q 'assets/lexicon/persian_first_names.txt'
+          "$AAPT" dump badging "$APK" | tee /tmp/badging
+          grep -q "package: name='com.nameemrooz.journal.v119final' versionCode='22' versionName='1.1.9'" /tmp/badging
+          "$AAPT" dump permissions "$APK" | tee /tmp/perms
+          grep -q 'android.permission.RECORD_AUDIO' /tmp/perms
+          ! grep -q 'android.permission.INTERNET' /tmp/perms
+          "$AAPT" dump resources "$APK" > /tmp/resources
+          grep -q 'splash_logo_exact' /tmp/resources
+          grep -q 'app_icon_exact' /tmp/resources
+          grep -q 'doran_digit_0' /tmp/resources
+          grep -q 'doran_weekday_0' /tmp/resources
+          "$SIGNER" verify --verbose "$APK" | tee /tmp/sign
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/sign
+          mkdir -p deliver
+          cp "$APK" deliver/Emrooz-v1.1.9-QUALITY-FIX.apk
+          sha256sum deliver/Emrooz-v1.1.9-QUALITY-FIX.apk | tee deliver/Emrooz-v1.1.9-QUALITY-FIX.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v1.1.9-QUALITY-FIX
+          path: deliver/
+          compression-level: 0
+          retention-days: 14
+
+      - name: Publish direct-download release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG='v1.1.9-quality-fix'
+          APK='deliver/Emrooz-v1.1.9-QUALITY-FIX.apk'
+          SHA='deliver/Emrooz-v1.1.9-QUALITY-FIX.apk.sha256'
+          NOTES='Same tested Emrooz UI, with smaller splash logo, exact Doran vector clock/date, clipped transcription glow, conservative proofreading, and proper-name recovery including روح‌الله. Original CTC ASR model files remain pinned and unchanged.'
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" "$SHA" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$APK" "$SHA" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title 'Emrooz v1.1.9 Quality Fix' --notes "$NOTES"
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets,url,tagName | tee /tmp/release.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/release.json'))
+          a=[x for x in d['assets'] if x['name']=='Emrooz-v1.1.9-QUALITY-FIX.apk']
+          assert len(a)==1 and a[0]['size'] > 250_000_000
+          print(a[0]['url'])
+          PY
