@@ -1,0 +1,30 @@
+name: Inspect v1.1.7 splash sizing
+on:
+  push:
+    branches: [fix/v118-preserve-ui-speech-only]
+    paths: ['.github/workflows/inspect-v117-splash.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and print splash context
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          cat payload/v116.vec.* | base64 -d > /tmp/v116.tgz
+          tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* | base64 -d > /tmp/v117.tgz
+          tar -xzf /tmp/v117.tgz -C .
+          grep -n -B 12 -A 18 'splash_logo_exact' "$UI"
