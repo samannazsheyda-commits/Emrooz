@@ -1,0 +1,107 @@
+name: RED Emrooz v1.2.3 Regressions
+
+on:
+  push:
+    branches: [fix/v123-best-asr-editor]
+    paths:
+      - '.github/workflows/red-v123.yml'
+      - 'overlay/v123/tests/**'
+  workflow_dispatch:
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact v1.2.2 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          echo '3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/base.tgz' | sha256sum -c -
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114.tgz' | sha256sum -c -
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          cat payload/v116.vec.* > /tmp/v116.vec.b64
+          echo '2a0cde7c006f090bea54ec4aac7cff82839340ed140893e64dec36183ca73f22  /tmp/v116.vec.b64' | sha256sum -c -
+          base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz
+          echo '468b2c892f05ffa25f6a59597fa0405d1903303f407656d52fe14814425caebd  /tmp/v116.tgz' | sha256sum -c -
+          tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* > /tmp/v117.b64
+          echo 'a75bf955e8e31cb7e7477ae20cc24aa5badab6bf48c5bb8c06c30cd7c03c72ed  /tmp/v117.b64' | sha256sum -c -
+          base64 -d /tmp/v117.b64 > /tmp/v117.tgz
+          echo '120fbbe7415e87e4cc3be91d2b9b9211a64f6a93a1bf632dc67d9c160d5f90c9  /tmp/v117.tgz' | sha256sum -c -
+          tar -xzf /tmp/v117.tgz -C .
+          cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          python3 overlay/v118/apply_v118.py
+          python3 overlay/v119/apply_v119.py
+          cp overlay/v121/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/
+          python3 overlay/v121/apply_v121.py
+          cp overlay/v122/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/
+          python3 overlay/v122/apply_v122.py
+      - name: Restore build-only resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res/font app/src/main/assets/lexicon app/src/main/assets/models/shenava_rizeh_stream app/src/main/assets/models/shenava_v10_ctc_offline
+          curl -L --fail --retry 4 -o app/src/main/res/font/noto_naskh_arabic.ttf 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          curl -L --fail --retry 4 -o app/src/main/res/font/vazirmatn_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 4 -o app/src/main/res/font/vazirmatn_semibold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+          R='mah92/sherpa-onnx-nemo-ctc-fa-shenava-rizeh-v1.0-streaming-int8-2026-06-26'
+          K='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-non-streaming-int8-2026-06-26'
+          curl -L --fail --retry 5 -o app/src/main/assets/models/shenava_rizeh_stream/model.onnx "https://huggingface.co/$R/resolve/main/model.int8.onnx?download=true"
+          curl -L --fail --retry 5 -o app/src/main/assets/models/shenava_rizeh_stream/tokens.txt "https://huggingface.co/$R/resolve/main/tokens.txt?download=true"
+          curl -L --fail --retry 5 -o app/src/main/assets/models/shenava_v10_ctc_offline/model.onnx "https://huggingface.co/$K/resolve/main/model.int8.onnx?download=true"
+          curl -L --fail --retry 5 -o app/src/main/assets/models/shenava_v10_ctc_offline/tokens.txt "https://huggingface.co/$K/resolve/main/tokens.txt?download=true"
+          curl -L --fail --retry 4 -o /tmp/names.json 'https://raw.githubusercontent.com/nabidam/persian-names/68f5cb39a25c19ecaf6f60f3181aea200f8206f8/names.json'
+          curl -L --fail --retry 4 -o /tmp/surnames.csv 'https://raw.githubusercontent.com/farbodbj/iranian-surname-frequencies/9fb2fdccb62445b52e933d4d7929a52e01bd6011/iranian-surname-frequencies.csv'
+          python3 - <<'PY'
+          import csv,json
+          from pathlib import Path
+          def norm(v): return (v or '').strip().replace('ي','ی').replace('ى','ی').replace('ك','ک').replace('ة','ه')
+          lex=Path('app/src/main/assets/lexicon')
+          d=json.loads(Path('/tmp/names.json').read_text(encoding='utf-8-sig'))
+          names={norm(x) for x in d.keys() if norm(x)}; names.update({'سهیل','روح‌الله','روح الله'})
+          (lex/'persian_first_names.txt').write_text('\n'.join(sorted(names))+'\n',encoding='utf-8')
+          surnames={}
+          with open('/tmp/surnames.csv',encoding='utf-8-sig',newline='') as f:
+              for row in csv.DictReader(f):
+                  n=norm(row.get('name',''))
+                  if n: surnames[n]=1
+          surnames['ممدوحی']=1
+          (lex/'persian_surnames.tsv').write_text('\n'.join(f'{n}\t{s}' for n,s in sorted(surnames.items()))+'\n',encoding='utf-8')
+          PY
+      - name: Install v1.2.3 regression tests only
+        shell: bash
+        run: |
+          mkdir -p app/src/test/java/com/nameemrooz/journal/speech app/src/test/java/com/nameemrooz/journal/util
+          cp overlay/v123/tests/FinalTranscriptPolicyV123Test.kt app/src/test/java/com/nameemrooz/journal/speech/
+          cp overlay/v123/tests/PersianEditorV123Test.kt app/src/test/java/com/nameemrooz/journal/util/
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-34" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.10.2' }
+      - name: RED must fail for the reported regressions
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon :app:testReleaseUnitTest \
+            --tests 'com.nameemrooz.journal.speech.FinalTranscriptPolicyV123Test' \
+            --tests 'com.nameemrooz.journal.util.PersianEditorV123Test' > /tmp/red.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/red.log
+          test "$rc" -ne 0
+          grep -Eq 'FinalTranscriptPolicyV123Test|PersianEditorV123Test' /tmp/red.log
+          echo V123_RED_CONFIRMED
