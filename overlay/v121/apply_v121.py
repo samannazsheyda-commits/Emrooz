@@ -31,12 +31,26 @@ if 'text = normalizeCommonOrthography(text)' not in s:
         raise SystemExit(f'Expected phraseFixes pipeline anchor once; found {s.count(call_anchor)}')
     s = s.replace(call_anchor, call_replacement, 1)
 
+# The baseline final punctuation pass can leave a trailing period even when a clear
+# Persian question cue is present. Correct only that trailing mark; do not paraphrase.
+final_anchor = '            text = restoreFinalPunctuation(text)\n'
+final_replacement = '            text = enforceQuestionEnding(restoreFinalPunctuation(text))\n'
+if 'enforceQuestionEnding(restoreFinalPunctuation(text))' not in s:
+    if s.count(final_anchor) != 1:
+        raise SystemExit(f'Expected final punctuation anchor once; found {s.count(final_anchor)}')
+    s = s.replace(final_anchor, final_replacement, 1)
+
 func_anchor = '    private fun restoreFinalPunctuation(input: String): String {'
-func = '''    private fun normalizeCommonOrthography(input: String): String {\n        var text = input\n        // Persian plural suffixes: «کتاب های» -> «کتاب‌های», «روز ها» -> «روزها».\n        text = text.replace(\n            Regex("(?<=[\\u0600-\\u06FF])\\\\s+های(?=\\\\s|$|[،,.!؟؛:])"),\n            "‌های"\n        )\n        text = text.replace(\n            Regex("(?<=[\\u0600-\\u06FF])\\\\s+ها(?=\\\\s|$|[،,.!؟؛:])"),\n            "‌ها"\n        )\n        return text\n    }\n\n'''
+func = '''    private fun normalizeCommonOrthography(input: String): String {\n        var text = input\n        // Persian plural suffixes: «کتاب های» -> «کتاب‌های», «روز ها» -> «روزها».\n        text = text.replace(\n            Regex("(?<=[\\u0600-\\u06FF])\\\\s+های(?=\\\\s|$|[،,.!؟؛:])"),\n            "‌های"\n        )\n        text = text.replace(\n            Regex("(?<=[\\u0600-\\u06FF])\\\\s+ها(?=\\\\s|$|[،,.!؟؛:])"),\n            "‌ها"\n        )\n        return text\n    }\n\n    private fun enforceQuestionEnding(input: String): String {\n        val text = input.trim()\n        if (!text.endsWith('.')) return text\n        val looksLikeQuestion = questionHints.any { hint -> text.contains(hint) }\n        return if (looksLikeQuestion) text.dropLast(1) + "؟" else text\n    }\n\n'''
 if 'private fun normalizeCommonOrthography' not in s:
     if func_anchor not in s:
         raise SystemExit('restoreFinalPunctuation anchor missing')
     s = s.replace(func_anchor, func + func_anchor, 1)
+elif 'private fun enforceQuestionEnding' not in s:
+    enforce_only = '''    private fun enforceQuestionEnding(input: String): String {\n        val text = input.trim()\n        if (!text.endsWith('.')) return text\n        val looksLikeQuestion = questionHints.any { hint -> text.contains(hint) }\n        return if (looksLikeQuestion) text.dropLast(1) + "؟" else text\n    }\n\n'''
+    if func_anchor not in s:
+        raise SystemExit('restoreFinalPunctuation anchor missing for question helper')
+    s = s.replace(func_anchor, enforce_only + func_anchor, 1)
 TEXT.write_text(s, encoding='utf-8')
 
 # 3) Side-by-side test install and explicit version.
