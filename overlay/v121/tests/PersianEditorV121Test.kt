@@ -1,15 +1,20 @@
 package com.nameemrooz.journal.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PersianEditorV121Test {
     @Test
     fun `repairs common Persian half spaces and final punctuation`() {
         val input = "من نمی بینم چرا کتاب های جدید رو نمی خونم"
-        val expected = "من نمی‌بینم چرا کتاب‌های جدید رو نمی‌خونم؟"
+        val actual = PersianText.clean(input, final = true)
 
-        assertEquals(expected, PersianText.clean(input, final = true))
+        assertTrue("missing نمی‌بینم in <$actual>", actual.contains("نمی‌بینم"))
+        assertTrue("missing کتاب‌های in <$actual>", actual.contains("کتاب‌های"))
+        assertTrue("missing نمی‌خونم in <$actual>", actual.contains("نمی‌خونم"))
+        assertTrue("missing question mark in <$actual>", actual.endsWith("؟"))
+        assertEquals("من نمی‌بینم چرا کتاب‌های جدید رو نمی‌خونم؟", actual)
     }
 
     @Test
