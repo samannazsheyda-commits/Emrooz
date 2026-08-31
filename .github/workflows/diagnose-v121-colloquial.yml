@@ -1,0 +1,48 @@
+name: Diagnose Emrooz v1.2.1 Colloquial Tests
+
+on:
+  push:
+    branches: [fix/v121-fast-editor]
+    paths:
+      - '.github/workflows/diagnose-v121-colloquial.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct test sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          echo '3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/base.tgz' | sha256sum -c -
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114.tgz' | sha256sum -c -
+          tar -xzf /tmp/v114.tgz -C .
+          cat payload/v116.vec.* > /tmp/v116.vec.b64
+          base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz
+          tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* > /tmp/v117.b64
+          base64 -d /tmp/v117.b64 > /tmp/v117.tgz
+          tar -xzf /tmp/v117.tgz -C .
+          cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          python3 overlay/v118/apply_v118.py
+          python3 overlay/v119/apply_v119.py
+      - name: Print colloquial test expectations
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST='app/src/test/java/com/nameemrooz/journal/util/PersianColloquialEditingTest.kt'
+          test -f "$TEST"
+          echo '===== PERSIAN_COLLOQUIAL_TEST_BEGIN ====='
+          cat "$TEST"
+          echo '===== PERSIAN_COLLOQUIAL_TEST_END ====='
