@@ -50,18 +50,19 @@ jobs:
           rm -f app/src/main/java/com/nameemrooz/journal/speech/ShenavaOfflineModelSpec.kt
           python3 overlay/v123/apply_v123.py
 
-      - name: RED clock glyphs must currently fail
+      - name: RED confirm both reported regressions
         shell: bash
         run: |
           set -euo pipefail
           UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
-          ! grep -Fq "'0', '۰' -> height * 1.35f" "$UI"
-          ! grep -Fq "':' -> height * 0.52f" "$UI"
-
-      - name: RED quiet-speech enhancement must currently fail
-        shell: bash
-        run: |
-          set -euo pipefail
           ENGINE='app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt'
-          grep -Fq 'AdaptiveSpeechGain' "$ENGINE"
-          grep -Fq 'AutomaticGainControl' "$ENGINE"
+          clock_bad=0
+          mic_missing=0
+          if grep -Fq "'0', '۰' -> height * 1.35f" "$UI" && grep -Fq "':' -> height * 0.52f" "$UI"; then clock_bad=1; fi
+          if ! grep -Fq 'AdaptiveSpeechGain' "$ENGINE" || ! grep -Fq 'AutomaticGainControl' "$ENGINE"; then mic_missing=1; fi
+          echo "CLOCK_BAD=$clock_bad"
+          echo "MIC_ENHANCEMENT_MISSING=$mic_missing"
+          test "$clock_bad" -eq 1
+          test "$mic_missing" -eq 1
+          echo V124_RED_CONFIRMED
+          exit 1
