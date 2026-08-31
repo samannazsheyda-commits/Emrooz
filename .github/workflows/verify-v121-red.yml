@@ -46,6 +46,18 @@ jobs:
           python3 overlay/v118/apply_v118.py
           python3 overlay/v119/apply_v119.py
 
+      - name: Restore runtime fonts required by UI compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res/font
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/noto_naskh_arabic.ttf 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_semibold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+          test -s app/src/main/res/font/noto_naskh_arabic.ttf
+          test -s app/src/main/res/font/vazirmatn_regular.ttf
+          test -s app/src/main/res/font/vazirmatn_semibold.ttf
+
       - name: Add current v1.2.0 pure policies and new regression tests
         shell: bash
         run: |
