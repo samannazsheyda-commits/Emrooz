@@ -62,12 +62,31 @@ s = s.replace('import androidx.compose.foundation.layout.matchParentSize\n', '')
 s = s.replace('import androidx.compose.foundation.layout.weight\n', '')
 ui.write_text(s, encoding='utf-8')
 
-# Version bump and JVM target alignment. Kotlin/KAPT in this project targets Java 17,
-# so javac must use the same target or modern Gradle rejects the build before tests.
+# Version bump, JVM target alignment, and current Room 2.x compiler for Kotlin 2.1 metadata.
 gradle = ROOT / 'app/build.gradle.kts'
 s = gradle.read_text(encoding='utf-8')
 s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 16', s, count=1)
 s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "1.1.6"', s, count=1)
+
+# Room 2.6.1's compiler only understands Kotlin metadata through 2.0; 2.8.4 is
+# the current stable Room 2.x line and is compatible with this app's minSdk 26.
+s, room_hits = re.subn(
+    r'(androidx\.room:room-(?:runtime|ktx|compiler):)2\.6\.1',
+    r'\g<1>2.8.4',
+    s,
+)
+if room_hits < 3:
+    # Be tolerant if a staged build file already has another 2.x version, but make all three consistent.
+    s, room_hits_any = re.subn(
+        r'(androidx\.room:room-(?:runtime|ktx|compiler):)2\.\d+\.\d+',
+        r'\g<1>2.8.4',
+        s,
+    )
+    room_hits = max(room_hits, room_hits_any)
+if 'androidx.room:room-compiler:2.8.4' not in s:
+    raise SystemExit('Room compiler dependency was not upgraded to 2.8.4')
+print('room_dependency_hits=', room_hits)
+
 if 'sourceCompatibility = JavaVersion.VERSION_17' not in s:
     android_pos = s.find('android {')
     if android_pos < 0:
