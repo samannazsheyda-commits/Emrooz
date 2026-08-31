@@ -1,0 +1,172 @@
+name: Build Emrooz v1.1.6 Overlay
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'overlay/v116/**'
+      - '.github/workflows/build-v116-overlay.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tar.gz
+          tar -xzf /tmp/base.tar.gz -C .
+
+          cat patch/vnext.part* | base64 -d > /tmp/vnext.gz
+          gzip -dc /tmp/vnext.gz > /tmp/vnext.tar 2>/dev/null || true
+          tar -xf /tmp/vnext.tar -C . --ignore-zeros 2>/dev/null || true
+
+          cp -a overlay/v116/app/. app/
+          python3 overlay/v116/apply_v116.py
+
+          test -f app/src/main/java/com/nameemrooz/journal/speech/ShenavaRecognizer.kt
+          test -f app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          test -f app/src/main/java/com/nameemrooz/journal/util/AudioWindowBuffer.kt
+          grep -Fq 'models/shenava_v15_rnnt_int8' app/src/main/java/com/nameemrooz/journal/speech/ShenavaRecognizer.kt
+          grep -Fq 'Channel<ShortArray>(Channel.UNLIMITED)' app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          grep -Fq 'Dispatchers.IO' app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          grep -Fq '"میخام" to "می‌خوام"' app/src/main/java/com/nameemrooz/journal/util/PersianText.kt
+          grep -Fq 'versionName = "1.1.6"' app/build.gradle.kts
+          if grep -Fq 'android.permission.INTERNET' app/src/main/AndroidManifest.xml; then
+            echo 'INTERNET permission must not exist' >&2
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Download Shenava v1.5 RNNT INT8
+        shell: bash
+        run: |
+          set -euo pipefail
+          D='app/src/main/assets/models/shenava_v15_rnnt_int8'
+          mkdir -p "$D"
+          BASE='https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main'
+          curl -L --fail --retry 5 --retry-all-errors -o "$D/encoder.int8.onnx" "$BASE/encoder.int8.onnx?download=true"
+          curl -L --fail --retry 5 --retry-all-errors -o "$D/decoder.int8.onnx" "$BASE/decoder.int8.onnx?download=true"
+          curl -L --fail --retry 5 --retry-all-errors -o "$D/joiner.int8.onnx" "$BASE/joiner.int8.onnx?download=true"
+          curl -L --fail --retry 5 --retry-all-errors -o "$D/tokens.txt" "$BASE/tokens.txt?download=true"
+          test "$(stat -c%s "$D/encoder.int8.onnx")" -gt 120000000
+          test "$(stat -c%s "$D/decoder.int8.onnx")" -gt 3000000
+          test "$(stat -c%s "$D/joiner.int8.onnx")" -gt 1000000
+          test "$(stat -c%s "$D/tokens.txt")" -gt 8000
+          sha256sum "$D"/* | tee model-files.sha256
+
+      - name: Prepare legacy release signing path
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../signing
+          rm -f ../signing/emrooz-release.jks
+          keytool -genkeypair -v \
+            -keystore ../signing/emrooz-release.jks \
+            -storepass Emrooz2026Release \
+            -alias emrooz \
+            -keypass Emrooz2026Release \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Emrooz, OU=Android, O=Emrooz, C=IR"
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:testReleaseUnitTest
+
+      - name: Build release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Verify and sign APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          test -n "$SOURCE_APK"
+          keytool -genkeypair -v -keystore /tmp/emrooz-v116.jks -storepass EmroozV116Build -alias emrooz -keypass EmroozV116Build -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Emrooz, O=Emrooz, C=IR"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -p -f 4 "$SOURCE_APK" /tmp/emrooz-aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+            --ks /tmp/emrooz-v116.jks \
+            --ks-pass pass:EmroozV116Build \
+            --key-pass pass:EmroozV116Build \
+            --out Emrooz-v1.1.6-Fast-Persian.apk \
+            /tmp/emrooz-aligned.apk
+
+          APK='Emrooz-v1.1.6-Fast-Persian.apk'
+          unzip -t "$APK"
+          unzip -l "$APK" | grep -F 'assets/models/shenava_v15_rnnt_int8/encoder.int8.onnx'
+          unzip -l "$APK" | grep -F 'assets/models/shenava_v15_rnnt_int8/decoder.int8.onnx'
+          unzip -l "$APK" | grep -F 'assets/models/shenava_v15_rnnt_int8/joiner.int8.onnx'
+          unzip -l "$APK" | grep -F 'assets/models/shenava_v15_rnnt_int8/tokens.txt'
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | tee /tmp/permissions.txt
+          grep -Fq 'android.permission.RECORD_AUDIO' /tmp/permissions.txt
+          if grep -Fq 'android.permission.INTERNET' /tmp/permissions.txt; then
+            echo 'Unexpected INTERNET permission' >&2
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -Fq "versionName='1.1.6'" /tmp/badging.txt
+          sha256sum "$APK" | tee Emrooz-v1.1.6-Fast-Persian.apk.sha256
+          ls -lh "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v1.1.6-Fast-Persian
+          path: |
+            Emrooz-v1.1.6-Fast-Persian.apk
+            Emrooz-v1.1.6-Fast-Persian.apk.sha256
+            model-files.sha256
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG='v1.1.6-fast-persian'
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" Emrooz-v1.1.6-Fast-Persian.apk Emrooz-v1.1.6-Fast-Persian.apk.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" \
+              Emrooz-v1.1.6-Fast-Persian.apk \
+              Emrooz-v1.1.6-Fast-Persian.apk.sha256 \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title 'Emrooz v1.1.6 – Fast Persian' \
+              --notes 'Continuous RAM-only Persian capture, Shenava v1.5 RNNT INT8, faster live transcription, conservative spelling cleanup, and smaller intro logo.'
+          fi
