@@ -18,11 +18,18 @@ UI.write_text(s, encoding='utf-8')
 # 2) Strengthen spelling/orthography without paraphrasing or changing meaning.
 s = TEXT.read_text(encoding='utf-8')
 marker = '    private val phraseFixes = listOf(\n'
-extra_rules = '''        "نمی خونم" to "نمی‌خونم", "نمیخونم" to "نمی‌خونم",\n        "می خونم" to "می‌خونم", "میخونم" to "می‌خونم",\n        "نمی بینم" to "نمی‌بینم", "نمیبینم" to "نمی‌بینم",\n        "می بینم" to "می‌بینم", "میبینم" to "می‌بینم",\n        "نمی دونستم" to "نمی‌دونستم", "نمیدونستم" to "نمی‌دونستم",\n        "می اومدم" to "می‌اومدم", "میومدم" to "می‌اومدم",\n        "نمی فهمیدم" to "نمی‌فهمیدم", "نمیفهمیدم" to "نمی‌فهمیدم",\n        "می ذارم" to "می‌ذارم", "میذارم" to "می‌ذارم",\n        "می خوابم" to "می‌خوابم", "میخوابم" to "می‌خوابم",\n'''
+if marker not in s:
+    raise SystemExit('phraseFixes marker missing')
+
+core_rules = '''        "نمی خونم" to "نمی‌خونم", "نمیخونم" to "نمی‌خونم",\n        "می خونم" to "می‌خونم", "میخونم" to "می‌خونم",\n        "نمی بینم" to "نمی‌بینم", "نمیبینم" to "نمی‌بینم",\n        "می بینم" to "می‌بینم", "میبینم" to "می‌بینم",\n'''
 if '"نمی خونم" to "نمی‌خونم"' not in s:
-    if marker not in s:
-        raise SystemExit('phraseFixes marker missing')
-    s = s.replace(marker, marker + extra_rules, 1)
+    s = s.replace(marker, marker + core_rules, 1)
+
+# Install these legacy everyday forms independently. The baseline already contains
+# some of the newer rules above, so they must not share the same insertion guard.
+colloquial_rules = '''        "نمی دونستم" to "نمی‌دونستم", "نمیدونستم" to "نمی‌دونستم",\n        "می اومدم" to "می‌اومدم", "میومدم" to "می‌اومدم",\n        "نمی فهمیدم" to "نمی‌فهمیدم", "نمیفهمیدم" to "نمی‌فهمیدم",\n        "می ذارم" to "می‌ذارم", "میذارم" to "می‌ذارم",\n        "می خوابم" to "می‌خوابم", "میخوابم" to "می‌خوابم",\n'''
+if '"نمیدونستم" to "نمی‌دونستم"' not in s:
+    s = s.replace(marker, marker + colloquial_rules, 1)
 
 call_anchor = '''        phraseFixes.forEach { (from, to) -> text = text.replace(from, to, ignoreCase = false) }\n\n        text = text'''
 call_replacement = '''        phraseFixes.forEach { (from, to) -> text = text.replace(from, to, ignoreCase = false) }\n        text = normalizeCommonOrthography(text)\n\n        text = text'''
