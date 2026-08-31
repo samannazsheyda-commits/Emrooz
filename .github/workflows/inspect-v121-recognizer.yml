@@ -2,7 +2,7 @@ name: Inspect v1.2.1 Recognizer
 
 on:
   push:
-    branches: [fix/v121-fast-editor]
+    branches: [fix/v122-accuracy-ui]
     paths:
       - '.github/workflows/inspect-v121-recognizer.yml'
 
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct v1.1.9 baseline and v1.2.1 patch
+      - name: Reconstruct v1.2.1 baseline
         shell: bash
         run: |
           set -euo pipefail
@@ -37,17 +37,15 @@ jobs:
           python3 overlay/v119/apply_v119.py
           cp overlay/v121/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/
           python3 overlay/v121/apply_v121.py
-      - name: Print recognizers and relevant UI
+      - name: Print exact legacy contracts and Gradle model fetch
         shell: bash
         run: |
           set -euo pipefail
-          echo '===== ShenavaRecognizer.kt ====='
-          cat app/src/main/java/com/nameemrooz/journal/speech/ShenavaRecognizer.kt
-          echo '===== ShenavaOfflineRecognizer.kt ====='
-          cat app/src/main/java/com/nameemrooz/journal/speech/ShenavaOfflineRecognizer.kt
-          echo '===== SpeechTuning.kt ====='
-          cat app/src/main/java/com/nameemrooz/journal/speech/SpeechTuning.kt
+          echo '===== ShenavaOfflineModelSpecTest.kt ====='
+          cat app/src/test/java/com/nameemrooz/journal/speech/ShenavaOfflineModelSpecTest.kt
+          echo '===== SpeechTuningTest.kt ====='
+          cat app/src/test/java/com/nameemrooz/journal/speech/SpeechTuningTest.kt
           echo '===== ShenavaModelSpec.kt ====='
           cat app/src/main/java/com/nameemrooz/journal/speech/ShenavaModelSpec.kt
-          echo '===== Doran date/time block ====='
-          grep -n -A30 -B8 'DoranTimeLine' app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt | head -140
+          echo '===== relevant build.gradle.kts ====='
+          grep -n -A120 -B30 'fetchPersianModel\|shenava_v10_ctc\|model.onnx\|tokens.txt' app/build.gradle.kts || true
