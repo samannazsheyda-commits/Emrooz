@@ -1,0 +1,42 @@
+name: Inspect Emrooz vNext source
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/inspect-vnext.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct base and inspect vNext
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tar.gz
+          mkdir -p /tmp/base
+          tar -xzf /tmp/base.tar.gz -C /tmp/base
+          echo '=== BASE ROOT ==='
+          find /tmp/base -maxdepth 2 -type f | sort | head -80
+          cat patch/vnext.part* | base64 -d > /tmp/vnext.bin
+          echo '=== VNEXT FILE ==='
+          file /tmp/vnext.bin
+          mkdir -p /tmp/vnext
+          if tar -tzf /tmp/vnext.bin >/tmp/vnext-list.txt 2>/dev/null; then
+            echo '=== VNEXT TAR LIST ==='
+            head -120 /tmp/vnext-list.txt
+            tar -xzf /tmp/vnext.bin -C /tmp/vnext
+          elif unzip -t /tmp/vnext.bin >/dev/null 2>&1; then
+            echo '=== VNEXT ZIP LIST ==='
+            unzip -l /tmp/vnext.bin | head -120
+            unzip -q /tmp/vnext.bin -d /tmp/vnext
+          else
+            echo 'Unknown vNext archive format' >&2
+            exit 2
+          fi
+          echo '=== VNEXT SOURCE FILES ==='
+          find /tmp/vnext -type f | sort | head -200
+          echo '=== KEY FILE HITS ==='
+          find /tmp/vnext -type f \( -name 'LiveSpeechEngine.kt' -o -name 'PersianText.kt' -o -name 'SpeechTuning.kt' -o -name 'NameEmroozApp.kt' -o -name 'build.gradle.kts' \) -print
