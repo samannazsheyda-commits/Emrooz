@@ -1,0 +1,93 @@
+name: Verify Emrooz v1.2.0 RED Tests
+
+on:
+  push:
+    branches: [fix/v120-hybrid-whisper]
+    paths:
+      - 'overlay/v120/tests/**'
+      - '.github/workflows/verify-v120-red.yml'
+  workflow_dispatch:
+
+jobs:
+  red-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact v1.1.9 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          echo '3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/base.tgz' | sha256sum -c -
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114.tgz' | sha256sum -c -
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          cat payload/v116.vec.* > /tmp/v116.vec.b64
+          echo '2a0cde7c006f090bea54ec4aac7cff82839340ed140893e64dec36183ca73f22  /tmp/v116.vec.b64' | sha256sum -c -
+          base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz
+          echo '468b2c892f05ffa25f6a59597fa0405d1903303f407656d52fe14814425caebd  /tmp/v116.tgz' | sha256sum -c -
+          tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* > /tmp/v117.b64
+          echo 'a75bf955e8e31cb7e7477ae20cc24aa5badab6bf48c5bb8c06c30cd7c03c72ed  /tmp/v117.b64' | sha256sum -c -
+          base64 -d /tmp/v117.b64 > /tmp/v117.tgz
+          echo '120fbbe7415e87e4cc3be91d2b9b9211a64f6a93a1bf632dc67d9c160d5f90c9  /tmp/v117.tgz' | sha256sum -c -
+          tar -xzf /tmp/v117.tgz -C .
+          cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          python3 overlay/v118/apply_v118.py
+          python3 overlay/v119/apply_v119.py
+          grep -Fq 'versionName = "1.1.9"' app/build.gradle.kts
+
+      - name: Restore runtime font assets needed by resource compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res/font app/src/main/assets/lexicon
+          curl -L --fail --retry 5 --retry-all-errors -o app/src/main/res/font/noto_naskh_arabic.ttf 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          curl -L --fail --retry 5 --retry-all-errors -o app/src/main/res/font/vazirmatn_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 5 --retry-all-errors -o app/src/main/res/font/vazirmatn_semibold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+          printf 'روح‌الله\nروح الله\nسهیل\n' > app/src/main/assets/lexicon/persian_first_names.txt
+          printf 'ممدوحی\t1\n' > app/src/main/assets/lexicon/persian_surnames.tsv
+
+      - name: Install toolchain
+        uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.10.2' }
+
+      - name: Copy v1.2.0 tests only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/test/java/com/nameemrooz/journal/speech
+          cp overlay/v120/tests/*.kt app/src/test/java/com/nameemrooz/journal/speech/
+
+      - name: Prove tests are RED before implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          gradle --no-daemon :app:testReleaseUnitTest \
+            --tests 'com.nameemrooz.journal.speech.HybridTranscriptPolicyTest' \
+            --tests 'com.nameemrooz.journal.speech.AudioSourceSelectorTest' \
+            --tests 'com.nameemrooz.journal.speech.SpeechSessionGateTest' > /tmp/red.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/red.log
+          if [ "$code" -eq 0 ]; then
+            echo 'Expected v1.2.0 tests to fail before production implementation' >&2
+            exit 1
+          fi
+          grep -Eq 'HybridTranscriptPolicy|AudioSourceSelector|SpeechSessionGate' /tmp/red.log
+          echo V120_RED_CONFIRMED
