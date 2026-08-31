@@ -1,0 +1,51 @@
+name: Inspect v1.2.1 Recognizer
+
+on:
+  push:
+    branches: [fix/v121-fast-editor]
+    paths:
+      - '.github/workflows/inspect-v121-recognizer.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct v1.1.9 baseline and v1.2.1 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          cat payload/v116.vec.* > /tmp/v116.vec.b64
+          base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz
+          tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* > /tmp/v117.b64
+          base64 -d /tmp/v117.b64 > /tmp/v117.tgz
+          tar -xzf /tmp/v117.tgz -C .
+          cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          python3 overlay/v118/apply_v118.py
+          python3 overlay/v119/apply_v119.py
+          cp overlay/v121/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/
+          python3 overlay/v121/apply_v121.py
+      - name: Print recognizer and relevant text pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '===== ShenavaRecognizer.kt ====='
+          cat app/src/main/java/com/nameemrooz/journal/speech/ShenavaRecognizer.kt
+          echo '===== SpeechTuning references ====='
+          grep -R -n "object SpeechTuning\|normalize\|feature\|numThreads\|decode\|chunk\|endpoint" app/src/main/java/com/nameemrooz/journal/speech app/src/main/java/com/nameemrooz/journal/util || true
+          echo '===== Doran date/time block ====='
+          grep -n -A25 -B8 'DoranTimeLine' app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt | head -120
+          echo '===== PersianText final pipeline ====='
+          sed -n '1,300p' app/src/main/java/com/nameemrooz/journal/util/PersianText.kt
