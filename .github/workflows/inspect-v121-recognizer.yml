@@ -37,17 +37,17 @@ jobs:
           python3 overlay/v119/apply_v119.py
           cp overlay/v121/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/
           python3 overlay/v121/apply_v121.py
-      - name: Print recognizer and relevant text pipeline
+      - name: Print recognizers and relevant UI
         shell: bash
         run: |
           set -euo pipefail
           echo '===== ShenavaRecognizer.kt ====='
           cat app/src/main/java/com/nameemrooz/journal/speech/ShenavaRecognizer.kt
+          echo '===== ShenavaOfflineRecognizer.kt ====='
+          cat app/src/main/java/com/nameemrooz/journal/speech/ShenavaOfflineRecognizer.kt
           echo '===== SpeechTuning.kt ====='
           cat app/src/main/java/com/nameemrooz/journal/speech/SpeechTuning.kt
           echo '===== ShenavaModelSpec.kt ====='
           cat app/src/main/java/com/nameemrooz/journal/speech/ShenavaModelSpec.kt
           echo '===== Doran date/time block ====='
-          grep -n -A25 -B8 'DoranTimeLine' app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt | head -120
-          echo '===== PersianText final pipeline ====='
-          sed -n '1,380p' app/src/main/java/com/nameemrooz/journal/util/PersianText.kt
+          grep -n -A30 -B8 'DoranTimeLine' app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt | head -140
