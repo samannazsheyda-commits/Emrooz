@@ -217,7 +217,6 @@ class LiveSpeechEngine(
                 Log.e(TAG, "Two-pass speech recognition failed", t)
                 emitError("تبدیل صدا به متن متوقف شد؛ دوباره امتحان کن")
             } finally {
-                java.util.Arrays.fill(emptyArray<FloatArray>(), null)
                 audioChunks.forEach { java.util.Arrays.fill(it, 0f) }
                 audioChunks.clear()
                 running.set(false)
