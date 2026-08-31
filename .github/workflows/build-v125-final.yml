@@ -1,0 +1,218 @@
+name: Build Emrooz v1.2.5 Final Verified
+
+on:
+  push:
+    branches: [fix/v125-stable-live-font]
+    paths:
+      - '.github/workflows/build-v125-final.yml'
+      - 'overlay/v125/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact v1.2.4 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz
+          echo '3c0dfc2159467bf457f7235a8377dde233acebd637b68e6717836b4ebcdd5bee  /tmp/base.tgz' | sha256sum -c -
+          tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py
+          python3 fixes/apply_ui_patch.py
+
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz
+          echo 'a6cd02a6695a5f2421c5243cceaddc34b6d3fb8f7336bda6c7c493b75e83c4c7  /tmp/v114.tgz' | sha256sum -c -
+          tar -xzf /tmp/v114.tgz -C .
+          sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+
+          cat payload/v116.vec.* > /tmp/v116.vec.b64
+          echo '2a0cde7c006f090bea54ec4aac7cff82839340ed140893e64dec36183ca73f22  /tmp/v116.vec.b64' | sha256sum -c -
+          base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz
+          echo '468b2c892f05ffa25f6a59597fa0405d1903303f407656d52fe14814425caebd  /tmp/v116.tgz' | sha256sum -c -
+          tar -xzf /tmp/v116.tgz -C .
+
+          cat payload/v117.part.* > /tmp/v117.b64
+          echo 'a75bf955e8e31cb7e7477ae20cc24aa5badab6bf48c5bb8c06c30cd7c03c72ed  /tmp/v117.b64' | sha256sum -c -
+          base64 -d /tmp/v117.b64 > /tmp/v117.tgz
+          echo '120fbbe7415e87e4cc3be91d2b9b9211a64f6a93a1bf632dc67d9c160d5f90c9  /tmp/v117.tgz' | sha256sum -c -
+          tar -xzf /tmp/v117.tgz -C .
+
+          cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt
+          python3 overlay/v118/apply_v118.py
+          python3 overlay/v119/apply_v119.py
+          cp overlay/v121/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/
+          python3 overlay/v121/apply_v121.py
+          rm -f app/src/main/java/com/nameemrooz/journal/speech/ShenavaOfflineModelSpec.kt
+          cp overlay/v122/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/
+          python3 overlay/v122/apply_v122.py
+          SPEECH='app/src/main/java/com/nameemrooz/journal/speech'
+          cp overlay/v123/app/src/main/java/com/nameemrooz/journal/speech/FinalTranscriptPolicy.kt "$SPEECH/FinalTranscriptPolicy.kt"
+          cp overlay/v123/app/src/main/java/com/nameemrooz/journal/speech/ShenavaModelSpec.kt "$SPEECH/ShenavaModelSpec.kt"
+          rm -f "$SPEECH/ShenavaOfflineModelSpec.kt"
+          python3 overlay/v123/apply_v123.py
+          cp overlay/v124/app/src/main/java/com/nameemrooz/journal/speech/AdaptiveSpeechGain.kt "$SPEECH/AdaptiveSpeechGain.kt"
+          python3 overlay/v124/apply_v124.py
+          grep -Fq 'applicationId = "com.nameemrooz.journal.v124mic"' app/build.gradle.kts
+          grep -Fq 'versionName = "1.2.4"' app/build.gradle.kts
+          cp app/src/main/AndroidManifest.xml /tmp/manifest-v124.xml
+
+      - name: Restore runtime fonts and lexicons
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res/font app/src/main/assets/lexicon
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/noto_naskh_arabic.ttf 'https://raw.githubusercontent.com/google/fonts/ade3d1533e06b2b1462ffcde8e08b129627ca360/ofl/notonaskharabic/NotoNaskhArabic%5Bwght%5D.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_regular.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-Regular.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o app/src/main/res/font/vazirmatn_semibold.ttf 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/ttf/Vazirmatn-SemiBold.ttf'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o /tmp/names.json 'https://raw.githubusercontent.com/nabidam/persian-names/68f5cb39a25c19ecaf6f60f3181aea200f8206f8/names.json'
+          curl -L --fail --retry 5 --retry-all-errors --connect-timeout 30 -o /tmp/surnames.csv 'https://raw.githubusercontent.com/farbodbj/iranian-surname-frequencies/9fb2fdccb62445b52e933d4d7929a52e01bd6011/iranian-surname-frequencies.csv'
+          python3 - <<'PY'
+          import csv,json
+          from pathlib import Path
+          def norm(v): return (v or '').strip().replace('ي','ی').replace('ى','ی').replace('ك','ک').replace('ة','ه')
+          lex=Path('app/src/main/assets/lexicon')
+          d=json.loads(Path('/tmp/names.json').read_text(encoding='utf-8-sig'))
+          names={norm(x) for x in d.keys() if norm(x)}
+          names.update({'سهیل','روح‌الله','روح الله'})
+          (lex/'persian_first_names.txt').write_text('\n'.join(sorted(names))+'\n',encoding='utf-8')
+          surnames={}
+          with open('/tmp/surnames.csv',encoding='utf-8-sig',newline='') as f:
+              for row in csv.DictReader(f):
+                  n=norm(row.get('name',''))
+                  if n: surnames[n]=1
+          surnames['ممدوحی']=1
+          (lex/'persian_surnames.tsv').write_text('\n'.join(f'{n}\t{s}' for n,s in sorted(surnames.items()))+'\n',encoding='utf-8')
+          PY
+
+      - name: Download and pin Koochik live and final models
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf app/src/main/assets/models
+          LIVE='app/src/main/assets/models/shenava_koochik_stream'
+          FINAL='app/src/main/assets/models/shenava_v10_ctc_offline'
+          mkdir -p "$LIVE" "$FINAL"
+          KS='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-streaming-int8-2026-06-26'
+          KF='mah92/sherpa-onnx-nemo-ctc-fa-shenava-koochik-v1.0-non-streaming-int8-2026-06-26'
+          curl -L --fail --retry 5 --retry-all-errors -o "$LIVE/model.onnx" "https://huggingface.co/$KS/resolve/main/model.int8.onnx?download=true"
+          curl -L --fail --retry 5 --retry-all-errors -o "$LIVE/tokens.txt" "https://huggingface.co/$KS/resolve/main/tokens.txt?download=true"
+          curl -L --fail --retry 5 --retry-all-errors -o "$FINAL/model.onnx" "https://huggingface.co/$KF/resolve/main/model.int8.onnx?download=true"
+          curl -L --fail --retry 5 --retry-all-errors -o "$FINAL/tokens.txt" "https://huggingface.co/$KF/resolve/main/tokens.txt?download=true"
+          echo '439983c95ab83c55c841e0795ba3a61d56718ec5c972a3a208548b93470b04b1  app/src/main/assets/models/shenava_koochik_stream/model.onnx' | sha256sum -c -
+          echo '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  app/src/main/assets/models/shenava_koochik_stream/tokens.txt' | sha256sum -c -
+          echo '9d487fc2aa8cdb742a6e2f000be4c25e6b620faf73c9a335fdb310cc7879182e  app/src/main/assets/models/shenava_v10_ctc_offline/model.onnx' | sha256sum -c -
+          echo '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  app/src/main/assets/models/shenava_v10_ctc_offline/tokens.txt' | sha256sum -c -
+
+      - name: Apply v1.2.5 production overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          SPEECH='app/src/main/java/com/nameemrooz/journal/speech'
+          cp overlay/v125/app/src/main/java/com/nameemrooz/journal/speech/StableLiveTranscript.kt "$SPEECH/StableLiveTranscript.kt"
+          python3 overlay/v125/apply_v125.py
+          mkdir -p app/src/test/java/v122reg app/src/test/java/v123reg app/src/test/java/v124reg app/src/test/java/v125reg
+          cp overlay/v122/tests/*.kt app/src/test/java/v122reg/
+          cp overlay/v123/tests/*.kt app/src/test/java/v123reg/
+          cp overlay/v124/tests/*.kt app/src/test/java/v124reg/
+          cp overlay/v125/tests/*.kt app/src/test/java/v125reg/
+          grep -Fq 'applicationId = "com.nameemrooz.journal.v125stable"' app/build.gradle.kts
+          grep -Fq 'versionName = "1.2.5"' app/build.gradle.kts
+          cmp /tmp/manifest-v124.xml app/src/main/AndroidManifest.xml
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          ENGINE="$SPEECH/LiveSpeechEngine.kt"
+          grep -Fq 'text = JalaliDate.time(now)' "$UI"
+          grep -Fq 'text = JalaliDate.pretty(now).replace("  ", " ")' "$UI"
+          grep -Fq 'fontFamily = UiFont' "$UI"
+          grep -Fq 'val liveStabilizer = StableLiveTranscript()' "$ENGINE"
+          grep -Fq 'liveStabilizer.offer(partial, SystemClock.elapsedRealtime())' "$ENGINE"
+          ! grep -Fq 'emitText(partial)' "$ENGINE"
+          grep -Fq 'AdaptiveSpeechGain()' "$ENGINE"
+          grep -Fq 'AutomaticGainControl' "$ENGINE"
+          echo V125_FINAL_SCOPE_OK
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-34" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.10.2' }
+
+      - name: GREEN stable live transcript tests
+        run: gradle --no-daemon --stacktrace :app:testReleaseUnitTest --tests 'com.nameemrooz.journal.speech.StableLiveTranscriptV125Test'
+
+      - name: Complete unit suite
+        run: gradle --no-daemon --stacktrace :app:testReleaseUnitTest
+
+      - name: Android lint
+        run: gradle --no-daemon --stacktrace :app:lintRelease
+
+      - name: Generate install-safe signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          keytool -genkeypair -keystore signing/emrooz-release.jks -storepass Emrooz2026Release -alias emrooz -keypass Emrooz2026Release -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Emrooz v125 CI,OU=Android,O=Emrooz,C=IR'
+          cat > signing/keystore.properties <<'EOF'
+          storeFile=signing/emrooz-release.jks
+          storePassword=Emrooz2026Release
+          keyAlias=emrooz
+          keyPassword=Emrooz2026Release
+          EOF
+
+      - name: Build release APK
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Verify final APK independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -type f | head -n1)"
+          test -n "$SRC" && test -s "$SRC"
+          APK='Emrooz-v1.2.5-STABLE-LIVE-FONT.apk'
+          cp "$SRC" "$APK"
+
+          unzip -t "$APK" | tee /tmp/unzip-test.txt
+          grep -q 'No errors detected in compressed data' /tmp/unzip-test.txt
+          unzip -l "$APK" > /tmp/apk-list.txt
+          grep -q 'assets/models/shenava_koochik_stream/model.onnx' /tmp/apk-list.txt
+          grep -q 'assets/models/shenava_v10_ctc_offline/model.onnx' /tmp/apk-list.txt
+
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump resources "$APK" > /tmp/resources.txt
+          grep -q 'font/vazirmatn_regular' /tmp/resources.txt
+          grep -q 'font/vazirmatn_semibold' /tmp/resources.txt
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/signature.txt
+
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.nameemrooz.journal.v125stable'" /tmp/badging.txt
+          grep -q "versionCode='28'" /tmp/badging.txt
+          grep -q "versionName='1.2.5'" /tmp/badging.txt
+
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" > /tmp/permissions.txt
+          grep -q 'android.permission.RECORD_AUDIO' /tmp/permissions.txt
+          ! grep -q 'android.permission.INTERNET' /tmp/permissions.txt
+
+          sha256sum "$APK" | tee apk-sha256.txt
+          du -h "$APK"
+          echo V125_APK_VERIFY_OK
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v1.2.5-STABLE-LIVE-FONT
+          path: |
+            Emrooz-v1.2.5-STABLE-LIVE-FONT.apk
+            apk-sha256.txt
+          if-no-files-found: error
