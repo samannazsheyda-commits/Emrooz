@@ -11,34 +11,27 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect vNext payload deeply
+      - name: Recover partial vNext content
         shell: bash
         run: |
-          set -euo pipefail
-          cat payload/v110.part* | base64 -d > /tmp/base.tar.gz
-          mkdir -p /tmp/base
-          tar -xzf /tmp/base.tar.gz -C /tmp/base
-          echo '=== BASE KEY FILES ==='
-          find /tmp/base -type f \( -name 'LiveSpeechEngine.kt' -o -name 'PersianText.kt' -o -name 'NameEmroozApp.kt' -o -name 'build.gradle.kts' \) -print
-
+          set -u
           cat patch/vnext.part* | base64 -d > /tmp/vnext.gz
-          echo '=== VNEXT COMPRESSED ==='
-          wc -c /tmp/vnext.gz
-          file /tmp/vnext.gz
-          gzip -t /tmp/vnext.gz && echo GZIP_OK
-          gzip -dc /tmp/vnext.gz > /tmp/vnext.raw
-          echo '=== VNEXT RAW ==='
-          wc -c /tmp/vnext.raw
+          gzip -dc /tmp/vnext.gz > /tmp/vnext.raw 2>/tmp/gzip.err || true
+          echo '=== SIZES ==='
+          wc -c /tmp/vnext.gz /tmp/vnext.raw
+          cat /tmp/gzip.err || true
+          echo '=== RAW TYPE/HEAD ==='
           file /tmp/vnext.raw
-          head -c 128 /tmp/vnext.raw | od -An -tx1 -v
-          echo '=== VNEXT RAW STRINGS ==='
-          strings -n 8 /tmp/vnext.raw | head -80 || true
-          if tar -tf /tmp/vnext.raw >/tmp/vnext-list.txt 2>/dev/null; then
-            echo '=== RAW IS TAR ==='
-            head -120 /tmp/vnext-list.txt
-          elif unzip -t /tmp/vnext.raw >/dev/null 2>&1; then
-            echo '=== RAW IS ZIP ==='
-            unzip -l /tmp/vnext.raw | head -120
-          else
-            echo 'RAW_NOT_ARCHIVE'
-          fi
+          head -c 256 /tmp/vnext.raw | od -An -tc -v
+          echo '=== TAR LIST PARTIAL ==='
+          tar -tvf /tmp/vnext.raw 2>&1 | head -160 || true
+          mkdir -p /tmp/recovered
+          tar -xf /tmp/vnext.raw -C /tmp/recovered --ignore-zeros 2>/tmp/tar.err || true
+          cat /tmp/tar.err || true
+          echo '=== RECOVERED FILES ==='
+          find /tmp/recovered -type f | sort | head -220
+          echo '=== KEY FILE CONTENT ==='
+          for f in $(find /tmp/recovered -type f \( -name 'LiveSpeechEngine.kt' -o -name 'PersianText.kt' -o -name 'SpeechTuning.kt' -o -name 'FinalTranscriptSelector.kt' -o -name 'PersianNameCorrector.kt' -o -name 'ShenavaOfflineRecognizer.kt' -o -name 'build.gradle.kts' \)); do
+            echo "----- $f -----"
+            sed -n '1,260p' "$f"
+          done
