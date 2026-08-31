@@ -1,0 +1,35 @@
+name: Diagnose v1.2.3 Speech Integration
+on:
+  push:
+    branches: [fix/v123-best-asr-editor]
+    paths: ['.github/workflows/diag-v123-speech-usage.yml']
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct v1.2.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat payload/v110.part* | base64 -d > /tmp/base.tgz; tar -xzf /tmp/base.tgz -C .
+          UI='app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt'
+          sed -i '/^import androidx\.compose\.foundation\.layout\.matchParentSize$/d' "$UI"; sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          if [ -d fixes/app ]; then cp -a fixes/app/. app/; fi
+          python3 fixes/apply_text_patch.py; python3 fixes/apply_ui_patch.py
+          cat payload/v114.part* | base64 -d > /tmp/v114.tgz; tar -xzf /tmp/v114.tgz -C .; sed -i '/^import androidx\.compose\.foundation\.layout\.weight$/d' "$UI"
+          cat payload/v116.vec.* > /tmp/v116.vec.b64; base64 -d /tmp/v116.vec.b64 > /tmp/v116.tgz; tar -xzf /tmp/v116.tgz -C .
+          cat payload/v117.part.* > /tmp/v117.b64; base64 -d /tmp/v117.b64 > /tmp/v117.tgz; tar -xzf /tmp/v117.tgz -C .
+          cp overlay/v118/app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt; python3 overlay/v118/apply_v118.py; python3 overlay/v119/apply_v119.py
+          cp overlay/v121/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/; python3 overlay/v121/apply_v121.py
+          cp overlay/v122/app/src/main/java/com/nameemrooz/journal/speech/*.kt app/src/main/java/com/nameemrooz/journal/speech/; python3 overlay/v122/apply_v122.py
+      - name: Print speech call sites and ViewModel
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -RniE 'LiveSpeechEngine|\.start\(|\.stop\(|onPartial|onFinalizing|onFinal' app/src/main/java/com/nameemrooz/journal | head -n 500
+          echo '=== VIEWMODEL FILES ==='
+          find app/src/main/java/com/nameemrooz/journal -type f -name '*ViewModel*.kt' -print
+          for f in $(find app/src/main/java/com/nameemrooz/journal -type f -name '*ViewModel*.kt'); do echo "=== $f ==="; sed -n '1,320p' "$f"; done
+          echo '=== MANIFEST ==='; cat app/src/main/AndroidManifest.xml
