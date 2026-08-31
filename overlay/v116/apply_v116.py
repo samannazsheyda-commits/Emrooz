@@ -13,7 +13,6 @@ pattern = re.compile(
 )
 s, logo_hits = pattern.subn(r'\1.fillMaxWidth(0.34f)\2', s, count=1)
 if logo_hits == 0:
-    # Exact fallback for the recovered vNext UI.
     s, logo_hits = re.subn(
         r'modifier\s*=\s*Modifier\.fillMaxWidth\(\s*0?\.48f?\s*\)\.aspectRatio\(\s*1\.9f\s*\)',
         'modifier = Modifier.fillMaxWidth(0.34f).aspectRatio(1.9f)',
@@ -31,8 +30,7 @@ print(s[max(0, idx - 280): min(len(s), idx + 480)])
 if 'fillMaxWidth(0.34f).aspectRatio(1.9f)' not in s[max(0, idx - 500): min(len(s), idx + 800)]:
     raise SystemExit('Emrooz intro logo did not reach target 0.34f width')
 
-# The vNext archive is truncated at its final PNG. Remove only malformed PNG files
-# (missing the mandatory PNG signature/IEND chunk) so Android can fall back to another density.
+# The vNext archive is truncated at its final PNG. Remove only malformed PNG files.
 removed = []
 for p in (ROOT / 'app/src/main/res').rglob('*.png'):
     data = p.read_bytes()
@@ -64,11 +62,19 @@ s = s.replace('import androidx.compose.foundation.layout.matchParentSize\n', '')
 s = s.replace('import androidx.compose.foundation.layout.weight\n', '')
 ui.write_text(s, encoding='utf-8')
 
-# Version bump.
+# Version bump and JVM target alignment. Kotlin/KAPT in this project targets Java 17,
+# so javac must use the same target or modern Gradle rejects the build before tests.
 gradle = ROOT / 'app/build.gradle.kts'
 s = gradle.read_text(encoding='utf-8')
 s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 16', s, count=1)
 s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "1.1.6"', s, count=1)
+if 'sourceCompatibility = JavaVersion.VERSION_17' not in s:
+    android_pos = s.find('android {')
+    if android_pos < 0:
+        raise SystemExit('android block not found in app/build.gradle.kts')
+    brace_pos = s.find('{', android_pos)
+    insert = '''\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }\n'''
+    s = s[:brace_pos + 1] + insert + s[brace_pos + 1:]
 gradle.write_text(s, encoding='utf-8')
 
 print('v1.1.6 source patch applied')
