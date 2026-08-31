@@ -11,32 +11,34 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct base and inspect vNext
+      - name: Inspect vNext payload deeply
         shell: bash
         run: |
           set -euo pipefail
           cat payload/v110.part* | base64 -d > /tmp/base.tar.gz
           mkdir -p /tmp/base
           tar -xzf /tmp/base.tar.gz -C /tmp/base
-          echo '=== BASE ROOT ==='
-          find /tmp/base -maxdepth 2 -type f | sort | head -80
-          cat patch/vnext.part* | base64 -d > /tmp/vnext.bin
-          echo '=== VNEXT FILE ==='
-          file /tmp/vnext.bin
-          mkdir -p /tmp/vnext
-          if tar -tzf /tmp/vnext.bin >/tmp/vnext-list.txt 2>/dev/null; then
-            echo '=== VNEXT TAR LIST ==='
+          echo '=== BASE KEY FILES ==='
+          find /tmp/base -type f \( -name 'LiveSpeechEngine.kt' -o -name 'PersianText.kt' -o -name 'NameEmroozApp.kt' -o -name 'build.gradle.kts' \) -print
+
+          cat patch/vnext.part* | base64 -d > /tmp/vnext.gz
+          echo '=== VNEXT COMPRESSED ==='
+          wc -c /tmp/vnext.gz
+          file /tmp/vnext.gz
+          gzip -t /tmp/vnext.gz && echo GZIP_OK
+          gzip -dc /tmp/vnext.gz > /tmp/vnext.raw
+          echo '=== VNEXT RAW ==='
+          wc -c /tmp/vnext.raw
+          file /tmp/vnext.raw
+          head -c 128 /tmp/vnext.raw | od -An -tx1 -v
+          echo '=== VNEXT RAW STRINGS ==='
+          strings -n 8 /tmp/vnext.raw | head -80 || true
+          if tar -tf /tmp/vnext.raw >/tmp/vnext-list.txt 2>/dev/null; then
+            echo '=== RAW IS TAR ==='
             head -120 /tmp/vnext-list.txt
-            tar -xzf /tmp/vnext.bin -C /tmp/vnext
-          elif unzip -t /tmp/vnext.bin >/dev/null 2>&1; then
-            echo '=== VNEXT ZIP LIST ==='
-            unzip -l /tmp/vnext.bin | head -120
-            unzip -q /tmp/vnext.bin -d /tmp/vnext
+          elif unzip -t /tmp/vnext.raw >/dev/null 2>&1; then
+            echo '=== RAW IS ZIP ==='
+            unzip -l /tmp/vnext.raw | head -120
           else
-            echo 'Unknown vNext archive format' >&2
-            exit 2
+            echo 'RAW_NOT_ARCHIVE'
           fi
-          echo '=== VNEXT SOURCE FILES ==='
-          find /tmp/vnext -type f | sort | head -200
-          echo '=== KEY FILE HITS ==='
-          find /tmp/vnext -type f \( -name 'LiveSpeechEngine.kt' -o -name 'PersianText.kt' -o -name 'SpeechTuning.kt' -o -name 'NameEmroozApp.kt' -o -name 'build.gradle.kts' \) -print
