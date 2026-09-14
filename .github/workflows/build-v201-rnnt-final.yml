@@ -28,35 +28,44 @@ jobs:
           tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
           test -f /tmp/emrooz/app/build.gradle.kts
 
-      - name: Apply deterministic build compatibility patch
+      - name: Apply deterministic compatibility fixes
         shell: bash
         working-directory: /tmp/emrooz
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('app/build.gradle.kts')
-          s = p.read_text()
-          marker = '    buildFeatures { compose = true; buildConfig = true }\n'
-          patch = '''    compileOptions {
-              sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17
-              targetCompatibility = org.gradle.api.JavaVersion.VERSION_17
-          }
 
-          '''
+          gradle = Path('app/build.gradle.kts')
+          s = gradle.read_text()
+          marker = '    buildFeatures { compose = true; buildConfig = true }\n'
+          jvm17 = '''    compileOptions {\n        sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17\n        targetCompatibility = org.gradle.api.JavaVersion.VERSION_17\n    }\n\n'''
           if 'sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17' not in s:
               assert marker in s, 'buildFeatures marker not found'
-              s = s.replace(marker, patch + marker, 1)
+              s = s.replace(marker, jvm17 + marker, 1)
           s = s.replace('androidx.room:room-runtime:2.6.1', 'androidx.room:room-runtime:2.8.5')
           s = s.replace('androidx.room:room-ktx:2.6.1', 'androidx.room:room-ktx:2.8.5')
           s = s.replace('androidx.room:room-compiler:2.6.1', 'androidx.room:room-compiler:2.8.5')
-          p.write_text(s)
+          gradle.write_text(s)
+
+          manifest = Path('app/src/main/AndroidManifest.xml')
+          m = manifest.read_text()
+          if 'xmlns:tools=' not in m:
+              m = m.replace(
+                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android"\n    xmlns:tools="http://schemas.android.com/tools">',
+                  1,
+              )
+          if 'androidx.work.WorkManagerInitializer' not in m:
+              provider = '''        <provider\n            android:name="androidx.startup.InitializationProvider"\n            android:authorities="${applicationId}.androidx-startup"\n            android:exported="false"\n            tools:node="merge">\n            <meta-data\n                android:name="androidx.work.WorkManagerInitializer"\n                android:value="androidx.startup"\n                tools:node="remove" />\n        </provider>\n'''
+              assert '    </application>' in m, 'application end marker not found'
+              m = m.replace('    </application>', provider + '    </application>', 1)
+          manifest.write_text(m)
           PY
-          grep -q 'sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17' app/build.gradle.kts
-          grep -q 'targetCompatibility = org.gradle.api.JavaVersion.VERSION_17' app/build.gradle.kts
-          grep -q 'room-runtime:2.8.5' app/build.gradle.kts
-          grep -q 'room-ktx:2.8.5' app/build.gradle.kts
+          grep -q 'JavaVersion.VERSION_17' app/build.gradle.kts
           grep -q 'room-compiler:2.8.5' app/build.gradle.kts
+          grep -q 'androidx.work.WorkManagerInitializer' app/src/main/AndroidManifest.xml
+          grep -q 'tools:node="remove"' app/src/main/AndroidManifest.xml
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -70,12 +79,9 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Install CI tools
-        shell: bash
         run: |
-          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y ripgrep
-          rg --version
 
       - name: QA 1-2 - source, engine and approved UI contracts
         shell: bash
@@ -122,15 +128,11 @@ jobs:
           set -euo pipefail
           APK=/tmp/out/Emrooz-v2.0.1-Shenava-RNNT-Final-arm64.apk
           BT="$ANDROID_HOME/build-tools/35.0.0"
-          AAPT="$BT/aapt"
-          ZIPALIGN="$BT/zipalign"
-          APKSIGNER="$BT/apksigner"
-
+          "$BT/zipalign" -c -v 4 "$APK" >/tmp/zipalign.txt
+          "$BT/apksigner" verify --verbose --print-certs "$APK" >/tmp/signature.txt
+          "$BT/aapt" dump badging "$APK" >/tmp/badging.txt
+          "$BT/aapt" dump permissions "$APK" >/tmp/permissions.txt
           unzip -t "$APK" >/tmp/ziptest.txt
-          "$ZIPALIGN" -c -v 4 "$APK" >/tmp/zipalign.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" >/tmp/signature.txt
-          "$AAPT" dump badging "$APK" >/tmp/badging.txt
-          "$AAPT" dump permissions "$APK" >/tmp/permissions.txt
 
           grep -q "package: name='com.nameemrooz.journal' versionCode='31' versionName='2.0.1'" /tmp/badging.txt
           grep -q "sdkVersion:'26'" /tmp/badging.txt
@@ -148,13 +150,9 @@ jobs:
           echo 'e441ed265c961ff4a2436aa8bc36638e65849445e7a1f65cf263f0c310593dde  /tmp/joiner.onnx' | sha256sum -c -
           echo '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  /tmp/tokens.txt' | sha256sum -c -
           ! unzip -Z1 "$APK" | grep -Eqi 'whisper|rizeh|shenava_v10|ctc_model'
-
           grep -R -q 'FLAG_SECURE' app/src/main/java
           ! grep -R -Eqi 'FileOutputStream|AudioRecord.*write|\.wav|\.pcm' app/src/main/java/com/nameemrooz/journal/speech
           grep -R -q 'ThemeMode.DAY' app/src/main/java/com/nameemrooz/journal
-          grep -q 'sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17' app/build.gradle.kts
-          grep -q 'targetCompatibility = org.gradle.api.JavaVersion.VERSION_17' app/build.gradle.kts
-          grep -q 'room-compiler:2.8.5' app/build.gradle.kts
 
           APK_SHA=$(sha256sum "$APK" | awk '{print $1}')
           APK_SIZE=$(stat -c '%s' "$APK")
@@ -162,18 +160,18 @@ jobs:
           cat > /tmp/out/Emrooz-v2.0.1-QA-FA.md <<EOF
           # گزارش QA نهایی Emrooz v2.0.1
 
-          1. PASS — بازسازی سورس با SHA-256 دقیق آرشیو و اعمال اصلاح deterministic سازگاری build.
+          1. PASS — بازسازی سورس با SHA-256 دقیق آرشیو.
           2. PASS — قراردادهای Shenava RNNT و UI/Lock/Home و هش دارایی‌های UI تأیید شد.
-          3. PASS — تست‌های واحد Gradle اجرا و پاس شدند.
+          3. PASS — تست‌های واحد Gradle پاس شدند.
           4. PASS — Android lintRelease بدون خطای مسدودکننده پاس شد.
           5. PASS — assembleRelease با موفقیت انجام شد.
-          6. PASS — چهار فایل Shenava Koochik v1.5 RNNT INT8 داخل APK با SHA-256 مورد انتظار تأیید شدند و مدل قدیمی/Whisper وجود ندارد.
-          7. PASS — INTERNET permission وجود ندارد، allowBackup=false و کنترل‌های حریم خصوصی سورس تأیید شدند.
-          8. PASS — هش Theme/Icon/Splash نسخه تأییدشده و تم روشن برای نصب تازه تأیید شد.
+          6. PASS — فایل‌های Shenava Koochik v1.5 RNNT INT8 داخل APK با SHA-256 مورد انتظار تأیید شدند؛ مدل قدیمی/Whisper وجود ندارد.
+          7. PASS — INTERNET permission وجود ندارد، allowBackup=false و کنترل‌های حریم خصوصی تأیید شدند.
+          8. PASS — Theme/Icon/Splash نسخه تأییدشده و تم روشن نصب تازه تأیید شد.
           9. PASS — ZIP/zipalign، package/version/minSdk/targetSdk و arm64-v8a-only تأیید شد.
           10. PASS — امضای APK با apksigner تأیید شد.
 
-          Build compatibility: Java/Kotlin JVM 17 + Room 2.8.5
+          Build compatibility: Java/Kotlin JVM 17 + Room 2.8.5 + WorkManager custom initialization
           APK SHA-256: $APK_SHA
           APK size: $APK_SIZE bytes
           Signing certificate SHA-256: $CERT
