@@ -51,10 +51,6 @@ class HybridSpeechController(
     private var pendingFallbackStart = false
     private var fallbackUsed = false
 
-    init {
-        punctuationModel?.let { model -> scope.launch { model.prepare() } }
-    }
-
     override fun prepare() {
         if (closed.get()) return
         if (activeEngine == null) activeEngine = createEngine(activeMode)
