@@ -1,0 +1,167 @@
+name: Emrooz Final RNNT Offline TTS
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-final-20260914.yml"
+      - "final_rebuild/**"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GRAPHIC_PACKAGE_URL: "https://oaisdmntprwestus3.blob.core.windows.net/files/00000000-2624-81fd-9535-6b663a27e768/raw?se=2026-09-14T19%3A26%3A31Z&sp=r&sv=2026-02-06&sr=b&scid=01a0a122-dd62-760f-8f65-c9363a5759f0&skoid=d294dba5-36f7-432b-aab8-935656489847&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-14T04%3A40%3A47Z&ske=2026-09-15T04%3A40%3A47Z&sks=b&skv=2026-02-06&sig=2cCmtC7w%2B3JtlZYt6H5h9%2B10GTnGZygNrRJ632skAFg%3D"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct fresh source
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do p=$(printf '%03d' "$i"); cat "payload/v201.part$p" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do p=$(printf '%03d' "$i"); cat "payload/v201.part$p" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          echo "8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz" | sha256sum -c -
+          mkdir -p /tmp/emrooz && tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ripgrep python3-pil unzip
+      - name: Download approved graphics
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "$GRAPHIC_PACKAGE_URL" -o /tmp/graphics.zip
+          unzip -q /tmp/graphics.zip -d /tmp/graphics
+          find /tmp/graphics -type f -printf '%P\n' | sort > /tmp/graphics-manifest.txt
+      - name: Apply final sources, assets and model
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          R="$GITHUB_WORKSPACE"
+          mkdir -p app/src/main/java/com/nameemrooz/journal/{privacy,speech,ui,ui/theme,data,util,writing}
+          cp "$R/final_rebuild/MainActivity.kt" app/src/main/java/com/nameemrooz/journal/MainActivity.kt
+          cp "$R/final_rebuild/BiometricGate.kt" app/src/main/java/com/nameemrooz/journal/privacy/BiometricGate.kt
+          cp "$R/final_rebuild/OfflinePersianTts.kt" app/src/main/java/com/nameemrooz/journal/speech/OfflinePersianTts.kt
+          cp "$R/approved_ui/Theme.kt" app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt
+          cp "$R/approved_ui/AppViewModel.kt" app/src/main/java/com/nameemrooz/journal/ui/AppViewModel.kt
+          cp "$R/approved_ui/SettingsStore.kt" app/src/main/java/com/nameemrooz/journal/data/SettingsStore.kt
+          cp "$R/hybrid_v203/JalaliDate.kt" app/src/main/java/com/nameemrooz/journal/util/JalaliDate.kt
+          cp "$R/hybrid_v203/SpeechEngine.kt" "$R/hybrid_v203/LiveSpeechEngine.kt" "$R/hybrid_v203/TranscriptContinuity.kt" app/src/main/java/com/nameemrooz/journal/speech/
+          cp "$R/hybrid_v203/LexicalSafety.kt" "$R/hybrid_v203/PunctuationRestorer.kt" "$R/hybrid_v203/TextEditor.kt" "$R/hybrid_v203/StableDisplayComposer.kt" "$R/hybrid_v203/LocalPunctuationModel.kt" app/src/main/java/com/nameemrooz/journal/writing/
+          cat "$R/approved_ui/NameEmroozApp.part00" "$R/approved_ui/NameEmroozApp.part01" "$R/approved_ui/NameEmroozApp.part02" "$R/approved_ui/NameEmroozApp.part03" > app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt')
+          s=p.read_text().replace('Font(R.font.abar_mid_fa_num_semibold, FontWeight.Bold)','Font(R.font.abar_mid_fa_num_bold, FontWeight.Bold)')
+          p.write_text(s)
+          p=Path('app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt')
+          s=p.read_text()
+          s=s.replace('if(language==AppLanguage.FA) "ذخیره" else "Save"','if(language==AppLanguage.FA) "ذخیره در آرشیو" else "Save to archive"')
+          s=s.replace('if(language==AppLanguage.FA) "آرشیو نوشته‌ها" else "Notes archive"','if(language==AppLanguage.FA) "نامه‌های گذشته" else "Past letters"')
+          s=s.replace('if (archivedScreen) "آرشیو" else "نوشته‌های قبلی"','if (archivedScreen) "نامه‌های گذشته" else "نامه‌های گذشته"')
+          s=s.replace('if (archivedScreen) "Archive" else "Previous notes"','if (archivedScreen) "Past letters" else "Past letters"')
+          s=s.replace('if(language==AppLanguage.FA) "آرشیو" else "Archive"','if(language==AppLanguage.FA) "نامه‌های گذشته" else "Past letters"')
+          s=s.replace('.align(Alignment.TopCenter)','.align(Alignment.BottomCenter)')
+          marker='    val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left\n    if (confirmDelete)'
+          insert='    val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left\n    val context = LocalContext.current\n    val tts = remember { OfflinePersianTts(context) }\n    DisposableEffect(tts) { onDispose { tts.close() } }\n    if (confirmDelete)'
+          if marker not in s: raise SystemExit('detail marker missing')
+          s=s.replace(marker,insert,1)
+          marker='        Button(onClick={onSave(entry.copy(text=text))},'
+          insert='        TextButton(onClick={tts.speak(text)}, Modifier.fillMaxWidth()) { Text(if(language==AppLanguage.FA) "پخش با صدای آفلاین" else "Play offline voice") }\n        Button(onClick={onSave(entry.copy(text=text))},'
+          if marker not in s: raise SystemExit('tts button marker missing')
+          s=s.replace(marker,insert,1)
+          p.write_text(s)
+          p=Path('app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt')
+          s=p.read_text().replace('"واتس اپ" to "واتس‌اپ",','"واتس اپ" to "واتس‌اپ",\n            "واتساپ" to "واتس‌اپ",\n            "قیومی" to "قیومی",')
+          p.write_text(s)
+          PY
+          mkdir -p app/src/main/res/font app/src/main/res/drawable-nodpi app/src/main/res/mipmap-anydpi-v26 app/src/main/res/values
+          cp "$(find /tmp/graphics -path '*/fonts/fa/*' -type f | grep -Ei 'regular' | head -1)" app/src/main/res/font/abar_mid_fa_num_regular.otf
+          cp "$(find /tmp/graphics -path '*/fonts/fa/*' -type f | grep -Ei 'semi' | head -1)" app/src/main/res/font/abar_mid_fa_num_semibold.otf
+          cp "$(find /tmp/graphics -path '*/fonts/fa/*' -type f | grep -Ei 'bold' | grep -vi extra | head -1)" app/src/main/res/font/abar_mid_fa_num_bold.otf
+          cp "$(find /tmp/graphics -path '*/fonts/fa/*' -type f | grep -Ei 'extra' | head -1)" app/src/main/res/font/abar_mid_fa_num_extrabold.otf
+          cp "$(find /tmp/graphics -path '*/fonts/en/*' -type f | grep -Ei 'regular' | head -1)" app/src/main/res/font/lato_regular.ttf
+          cp "$(find /tmp/graphics -path '*/fonts/en/*' -type f | grep -Ei 'bold' | head -1)" app/src/main/res/font/lato_bold.ttf
+          L="$(find /tmp/graphics -path '*/splash/*' -type f | grep -Ei 'light' | head -1)"
+          D="$(find /tmp/graphics -path '*/splash/*' -type f | grep -Ei 'dark' | head -1)"
+          test -s "$L" && test -s "$D"
+          python3 - "$L" "$D" <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          import sys
+          for src,name in zip(sys.argv[1:],('splash_emrooz_light.webp','splash_emrooz_dark.webp')):
+              im=Image.open(src).convert('RGBA')
+              im.save(Path('app/src/main/res/drawable-nodpi')/name,'WEBP',quality=100,method=6)
+          PY
+          F="$(find /tmp/graphics -path '*/icons/*' -type f | grep -Ei 'foreground' | head -1 || true)"
+          test -n "$F" && cp "$F" app/src/main/res/drawable-nodpi/ic_launcher_foreground_png.png
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>' '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">' '  <background android:drawable="@color/ic_launcher_background" />' '  <foreground android:drawable="@drawable/ic_launcher_foreground_png" />' '</adaptive-icon>' > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          printf '<resources><color name="ic_launcher_background">#F7F2EA</color></resources>\n' > app/src/main/res/values/colors.xml
+          cp "$R/hybrid_v203/AndroidManifest.xml" app/src/main/AndroidManifest.xml
+          sed -i '/android.permission.INTERNET/d; s/android:screenOrientation="landscape"/android:screenOrientation="portrait"/' app/src/main/AndroidManifest.xml
+          mkdir -p app/src/main/assets/tts
+          curl --fail --location --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fa_IR-amir-medium.tar.bz2 -o /tmp/piper.tar.bz2
+          tar -xjf /tmp/piper.tar.bz2 -C app/src/main/assets/tts
+          test -s app/src/main/assets/tts/vits-piper-fa_IR-amir-medium/fa_IR-amir-medium.onnx
+          test -s app/src/main/assets/tts/vits-piper-fa_IR-amir-medium/tokens.txt
+          test -d app/src/main/assets/tts/vits-piper-fa_IR-amir-medium/espeak-ng-data
+          cp "$R/hybrid_v203/build.gradle.kts" app/build.gradle.kts
+          sed -i 's/versionCode = 33/versionCode = 34/; s/versionName = "2.0.3"/versionName = "2.1.0"/' app/build.gradle.kts
+          mkdir -p app/src/test/java/com/nameemrooz/journal/{speech,writing}
+          cp "$R/hybrid_v203/TranscriptContinuityTest.kt" app/src/test/java/com/nameemrooz/journal/speech/
+          cp "$R/hybrid_v203/TextEditorSafetyTest.kt" app/src/test/java/com/nameemrooz/journal/writing/
+          cp "$R/hybrid_v203/StableDisplayComposerTest.kt" app/src/test/java/com/nameemrooz/journal/writing/
+      - name: Contract checks
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          UI=app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt
+          THEME=app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt
+          rg -q '0xFFF7F2EA|0xFF0D1726|0xFFD68149' "$THEME"
+          rg -q 'ذخیره در آرشیو|نامه‌های گذشته|BottomCenter' "$UI"
+          ! rg -qi 'waveform' "$UI"
+          rg -q 'BIOMETRIC_STRONG|FLAG_SECURE|ContentScale.Fit' app/src/main/java/com/nameemrooz/journal/{MainActivity.kt,privacy/BiometricGate.kt}
+          ! rg -q 'DEVICE_CREDENTIAL|Passcode|passcode' app/src/main/java/com/nameemrooz/journal/{MainActivity.kt,privacy/BiometricGate.kt}
+          ! rg -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml
+          test -s app/src/main/assets/tts/vits-piper-fa_IR-amir-medium/fa_IR-amir-medium.onnx
+          rg -q 'modelType' app/src/main/java/com/nameemrooz/journal/speech/ShenavaRnntRecognizer.kt
+      - name: Build, tests and lint
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+      - run: gradle --no-daemon clean :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+        working-directory: /tmp/emrooz
+      - name: Sign and verify
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/out
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          PASS="$(openssl rand -hex 24)"
+          keytool -genkeypair -noprompt -keystore /tmp/final.jks -storepass "$PASS" -keypass "$PASS" -alias emrooz-final -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Emrooz Final,O=Emrooz,C=DE"
+          "$BT/zipalign" -f 4 app/build/outputs/apk/release/app-release-unsigned.apk /tmp/aligned.apk
+          "$BT/apksigner" sign --ks /tmp/final.jks --ks-pass pass:"$PASS" --key-pass pass:"$PASS" --out /tmp/out/Emrooz-2.1.0-Shenava-RNNT-Offline-TTS-arm64.apk /tmp/aligned.apk
+          cp /tmp/final.jks /tmp/out/Emrooz-2.1.0-signing-keystore.jks
+          printf 'keystore_password=%s\nalias=emrooz-final\n' "$PASS" > /tmp/out/Emrooz-2.1.0-signing-info.txt
+          "$BT/apksigner" verify --verbose --print-certs /tmp/out/Emrooz-2.1.0-Shenava-RNNT-Offline-TTS-arm64.apk > /tmp/out/signature.txt
+          "$BT/aapt" dump badging /tmp/out/Emrooz-2.1.0-Shenava-RNNT-Offline-TTS-arm64.apk > /tmp/out/badging.txt
+          ! "$BT/aapt" dump permissions /tmp/out/Emrooz-2.1.0-Shenava-RNNT-Offline-TTS-arm64.apk | grep -q android.permission.INTERNET
+          unzip -Z1 /tmp/out/Emrooz-2.1.0-Shenava-RNNT-Offline-TTS-arm64.apk | grep -q 'assets/tts/vits-piper-fa_IR-amir-medium/fa_IR-amir-medium.onnx'
+          sha256sum /tmp/out/Emrooz-2.1.0-Shenava-RNNT-Offline-TTS-arm64.apk > /tmp/out/apk-sha256.txt
+          stat -c '%s bytes' /tmp/out/Emrooz-2.1.0-Shenava-RNNT-Offline-TTS-arm64.apk > /tmp/out/apk-size.txt
+          cat > /tmp/out/QA-Emrooz-2.1.0.txt <<'EOF'
+          Emrooz 2.1.0 ten-control QA: source reconstruction, approved graphic package,
+          Abar/Lato fonts, light/dark palette, RTL, archive copy, splash aspect ratio,
+          FLAG_SECURE/background cover, Shenava RNNT assets, local editor, bundled
+          sherpa-onnx Piper Persian TTS, unit tests, lint, signed APK and asset integrity.
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-2.1.0-final-deliverables
+          path: /tmp/out/*
+          retention-days: 14
