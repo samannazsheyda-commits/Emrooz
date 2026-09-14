@@ -1,0 +1,77 @@
+        Spacer(Modifier.height(14.dp))
+        Text(if(language==AppLanguage.FA) "حریم خصوصی" else "Privacy", Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.titleLarge)
+        Text(
+            if (speechMode == SpeechMode.PRIVATE_OFFLINE) {
+                if(language==AppLanguage.FA) "صدا ذخیره یا آپلود نمی‌شود. تبدیل صدا به متن و ویراستاری روی همین گوشی انجام می‌شود."
+                else "Audio is never saved or uploaded. Speech-to-text and editing run on this device."
+            } else {
+                if(language==AppLanguage.FA) "امروز صدا را ذخیره نمی‌کند. سرویس گفتار گوشی ممکن است بسته به تنظیمات دستگاه برای تشخیص گفتار از اینترنت استفاده کند؛ ویراستاری داخل اپ محلی است."
+                else "Emrooz never saves audio. Your device speech service may use the internet depending on device settings; editing inside Emrooz remains local."
+            },
+            Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.bodyMedium, color=MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        shape=RoundedCornerShape(16.dp),
+        color=MaterialTheme.colorScheme.surface.copy(alpha=.76f),
+        border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.55f)),
+    ) { Column(Modifier.padding(horizontal=15.dp, vertical=8.dp), content=content) }
+}
+
+@Composable private fun DividerSoft() = HorizontalDivider(color=MaterialTheme.colorScheme.outline.copy(alpha=.28f))
+
+@Composable
+private fun UiScaleSelector(language: AppLanguage, uiScale: UiScale, onChange: (UiScale) -> Unit) {
+    val labels = if(language==AppLanguage.FA) listOf("کوچک", "معمولی", "بزرگ") else listOf("Small", "Medium", "Large")
+    val scales = listOf(UiScale.SMALL, UiScale.MEDIUM, UiScale.LARGE)
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            scales.zip(labels).forEach { (scale,label) ->
+                Surface(
+                    onClick={onChange(scale)},
+                    modifier=Modifier.weight(1f),
+                    shape=RoundedCornerShape(11.dp),
+                    color=if(uiScale==scale) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.55f),
+                    border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.45f)),
+                ) {
+                    Text(label, Modifier.padding(vertical=9.dp), textAlign=TextAlign.Center, color=if(uiScale==scale) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, style=MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeechModeOption(
+    selected: Boolean,
+    enabled: Boolean,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled=enabled, onClick=onClick).padding(vertical=9.dp),
+        verticalAlignment=Alignment.CenterVertically,
+    ) {
+        RadioButton(selected=selected, onClick=if(enabled) onClick else null, enabled=enabled)
+        Spacer(Modifier.width(7.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style=MaterialTheme.typography.bodyMedium, color=if(enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=.55f))
+            Text(subtitle, style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=if(enabled) 1f else .55f))
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggle(label:String, checked:Boolean, icon:androidx.compose.ui.graphics.vector.ImageVector, onChange:(Boolean)->Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min=56.dp).clickable{onChange(!checked)}, verticalAlignment=Alignment.CenterVertically) {
+        Icon(icon, null, tint=MaterialTheme.colorScheme.primary, modifier=Modifier.size(20.dp))
+        Spacer(Modifier.width(11.dp))
+        Text(label, Modifier.weight(1f), style=MaterialTheme.typography.bodyMedium)
+        Switch(checked=checked, onCheckedChange=onChange)
+    }
+}
