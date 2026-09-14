@@ -1,0 +1,58 @@
+name: Smoke Emrooz v2.0.2 Runtime
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/smoke-v202.yml'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          echo '8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz' | sha256sum -c -
+          mkdir -p /tmp/emrooz && tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+      - name: Install tools and apply final state
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          sudo apt-get update && sudo apt-get install -y imagemagick
+          bash "$GITHUB_WORKSPACE/ci/lastnight/apply.sh"
+          sed -i 's/"arm64-v8a"/"x86_64"/g' app/build.gradle.kts
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build smoke APK
+        working-directory: /tmp/emrooz
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Emulator launch smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            adb install -r /tmp/emrooz/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am start -W -n com.nameemrooz.journal/.MainActivity
+            sleep 10
+            test -n "$(adb shell pidof com.nameemrooz.journal)"
+            adb shell dumpsys activity activities | grep -q 'com.nameemrooz.journal/.MainActivity'
+            ! adb logcat -d -b crash | grep -q 'com.nameemrooz.journal'
+            echo 'RUNTIME LAUNCH SMOKE: PASS'
