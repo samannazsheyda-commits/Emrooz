@@ -39,6 +39,7 @@ jobs:
           cp "$ROOT/hybrid_v203/build.gradle.kts" app/build.gradle.kts
           cp "$ROOT/hybrid_v203/AndroidManifest.xml" app/src/main/AndroidManifest.xml
           cp "$ROOT/hybrid_v203/SettingsStore.kt" app/src/main/java/com/nameemrooz/journal/data/SettingsStore.kt
+          cp "$ROOT/hybrid_v203/JalaliDate.kt" app/src/main/java/com/nameemrooz/journal/util/JalaliDate.kt
           for f in SpeechMode.kt SpeechEngine.kt SystemSpeechErrorPolicy.kt SystemSpeechEngine.kt TranscriptContinuity.kt HybridSpeechController.kt LiveSpeechEngine.kt; do
             cp "$ROOT/hybrid_v203/$f" "app/src/main/java/com/nameemrooz/journal/speech/$f"
           done
