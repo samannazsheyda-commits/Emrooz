@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      GRAPHIC_PACKAGE_URL: "https://oaisdmntprwestus3.blob.core.windows.net/files/00000000-2624-81fd-9535-6b663a27e768/raw?se=2026-09-14T19%3A26%3A31Z&sp=r&sv=2026-02-06&sr=b&scid=01a0a122-dd62-760f-8f65-c9363a5759f0&skoid=d294dba5-36f7-432b-aab8-935656489847&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-14T04%3A40%3A47Z&ske=2026-09-15T04%3A40%3A47Z&sks=b&skv=2026-02-06&sig=2cCmtC7w%2B3JtlZYt6H5h9%2B10GTnGZygNrRJ632skAFg%3D"
+      GRAPHIC_PACKAGE_URL: "https://oaisdmntprwestus3.blob.core.windows.net/files/00000000-2624-81fd-9535-6b663a27e768/raw?se=2026-09-14T20%3A41%3A36Z&sp=r&sv=2026-02-06&sr=b&scid=8be3e003-b5e3-4c8c-8934-472e473adfbb&skoid=d294dba5-36f7-432b-aab8-935656489847&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-14T08%3A42%3A33Z&ske=2026-09-15T08%3A42%3A33Z&sks=b&skv=2026-02-06&sig=izm%2Flylq0L8yLMrDT8uRSlN8aMwwJPdSUfAL4MYXfGI%3D"
     steps:
       - uses: actions/checkout@v4
       - name: Reconstruct fresh source
