@@ -26,7 +26,7 @@ jobs:
           mkdir -p /tmp/emrooz
           tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
 
-      - name: Patch JVM 17
+      - name: Patch JVM 17 and Room 2.8.5
         shell: bash
         working-directory: /tmp/emrooz
         run: |
@@ -37,9 +37,14 @@ jobs:
           marker='    buildFeatures { compose = true; buildConfig = true }\n'
           patch='''    compileOptions {\n        sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17\n        targetCompatibility = org.gradle.api.JavaVersion.VERSION_17\n    }\n\n'''
           if 'sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17' not in s:
+              assert marker in s
               s=s.replace(marker, patch+marker, 1)
-              p.write_text(s)
+          s=s.replace('androidx.room:room-runtime:2.6.1','androidx.room:room-runtime:2.8.5')
+          s=s.replace('androidx.room:room-ktx:2.6.1','androidx.room:room-ktx:2.8.5')
+          s=s.replace('androidx.room:room-compiler:2.6.1','androidx.room:room-compiler:2.8.5')
+          p.write_text(s)
           PY
+          grep -q 'room-compiler:2.8.5' app/build.gradle.kts
 
       - uses: actions/setup-java@v4
         with:
@@ -59,6 +64,6 @@ jobs:
           code=$?
           echo '===== FOCUSED KAPT ERRORS ====='
           grep -nEi '(^|[^a-z])(error:|exception|caused by:|room|kapt|cannot|unsupported|illegal|nosuch|failed)' /tmp/kapt.log | tail -n 260 || true
-          echo '===== LAST 350 LINES ====='
-          tail -n 350 /tmp/kapt.log
+          echo '===== LAST 220 LINES ====='
+          tail -n 220 /tmp/kapt.log
           exit $code
