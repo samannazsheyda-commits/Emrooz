@@ -1,0 +1,45 @@
+name: Recover Emrooz vNext Source
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/recover-vnext-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct prior Emrooz source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/recovered
+          cat payload/v110.part* | base64 -d > /tmp/base.tar.gz
+          tar -xzf /tmp/base.tar.gz -C /tmp/recovered
+          cat patch/vnext.part* | base64 -d > /tmp/vnext.gz
+          gzip -dc /tmp/vnext.gz > /tmp/vnext.tar 2>/dev/null || true
+          tar -xf /tmp/vnext.tar -C /tmp/recovered --ignore-zeros 2>/dev/null || true
+          cd /tmp/recovered
+          find . -maxdepth 4 -type f | sort > /tmp/recovered-files.txt
+          tar -czf /tmp/Emrooz-recovered-vnext-source.tar.gz .
+          sha256sum /tmp/Emrooz-recovered-vnext-source.tar.gz | tee /tmp/recovered-source.sha256
+
+      - name: Upload recovered source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-recovered-vnext-source
+          path: |
+            /tmp/Emrooz-recovered-vnext-source.tar.gz
+            /tmp/recovered-files.txt
+            /tmp/recovered-source.sha256
+          compression-level: 0
+          retention-days: 7
