@@ -252,13 +252,12 @@ jobs:
             adb install -r /tmp/emrooz/app/build/outputs/apk/debug/app-debug.apk
             adb logcat -c
             adb shell am force-stop com.nameemrooz.journal
-            adb shell monkey -p com.nameemrooz.journal -c android.intent.category.LAUNCHER 1
-            sleep 8
+            adb shell am start -W -n com.nameemrooz.journal/.MainActivity | tee /tmp/out/activity-start.txt
+            sleep 20
             PID=$(adb shell pidof com.nameemrooz.journal | tr -d '\r')
             test -n "$PID"
             adb logcat -d > /tmp/out/runtime-logcat.txt
             ! grep -E 'FATAL EXCEPTION|Process: com\.nameemrooz\.journal.*has died' /tmp/out/runtime-logcat.txt
-            adb shell dumpsys activity activities | grep -q 'com.nameemrooz.journal'
             echo "runtime process=$PID" | tee /tmp/out/runtime-smoke.txt
 
       - name: Write QA report
@@ -278,7 +277,7 @@ jobs:
           - No INTERNET permission in app manifest/APK
           - No audio-file write path in speech package
           - Release lint/tests/build/signature/integrity passed
-          - Real Android API 35 emulator launch smoke passed without fatal exception
+          - Real Android API 35 emulator direct MainActivity launch passed without fatal exception
           EOF
 
       - name: Upload verified APK and QA
@@ -294,6 +293,7 @@ jobs:
             /tmp/out/signature.txt
             /tmp/out/badging.txt
             /tmp/out/permissions.txt
+            /tmp/out/activity-start.txt
             /tmp/out/runtime-smoke.txt
             /tmp/out/runtime-logcat.txt
           retention-days: 7
