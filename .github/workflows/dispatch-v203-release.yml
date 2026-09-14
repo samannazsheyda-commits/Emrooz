@@ -1,0 +1,19 @@
+name: Dispatch Emrooz v2.0.3 Release
+
+on:
+  push:
+    paths:
+      - '.github/workflows/dispatch-v203-release.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch verified release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build-v203-release.yml --repo '${{ github.repository }}' --ref main
