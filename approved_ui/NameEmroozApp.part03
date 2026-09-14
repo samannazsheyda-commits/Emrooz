@@ -1,0 +1,106 @@
+
+@Composable
+private fun Settings(store: SettingsStore, onBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) ReminderWorker.schedule(context)
+    }
+    val theme by store.theme.collectAsState(initial=AppTheme.DAY)
+    val language by store.language.collectAsState(initial=AppLanguage.FA)
+    val uiScale by store.uiScale.collectAsState(initial=UiScale.MEDIUM)
+    val lock by store.lockEnabled.collectAsState(initial=true)
+    val reminder by store.reminderEnabled.collectAsState(initial=true)
+    val sound by store.soundEnabled.collectAsState(initial=true)
+    val haptics by store.hapticsEnabled.collectAsState(initial=true)
+    val clearClipboard by store.clearClipboardEnabled.collectAsState(initial=true)
+    val align = if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left
+
+    Column(Modifier.fillMaxSize().padding(horizontal=18.dp, vertical=14.dp)) {
+        Row(verticalAlignment=Alignment.CenterVertically) {
+            GlassIconButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, if(language==AppLanguage.FA) "برگشت" else "Back")
+            Spacer(Modifier.weight(1f))
+            FixedLanguageSwitch(language) { scope.launch { store.setLanguage(it) } }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(if(language==AppLanguage.FA) "تنظیمات" else "Settings", Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(14.dp))
+
+        SettingsCard {
+            SettingsToggle(if(language==AppLanguage.FA) "حالت شب" else "Dark mode", theme==AppTheme.NIGHT, Icons.Default.DarkMode) { enabled -> scope.launch { store.setTheme(if(enabled) AppTheme.NIGHT else AppTheme.DAY) } }
+            DividerSoft()
+            SettingsToggle(if(language==AppLanguage.FA) "صدای تأیید" else "Confirmation sounds", sound, Icons.AutoMirrored.Filled.VolumeUp) { scope.launch { store.setSound(it) } }
+            DividerSoft()
+            SettingsToggle(if(language==AppLanguage.FA) "لرزش دکمه‌ها" else "Button haptics", haptics, Icons.Default.Vibration) { scope.launch { store.setHaptics(it) } }
+        }
+        Spacer(Modifier.height(10.dp))
+        SettingsCard {
+            SettingsToggle(if(language==AppLanguage.FA) "قفل و اثر انگشت" else "Passcode & fingerprint", lock, Icons.Default.Fingerprint) { scope.launch { store.setLock(it) } }
+            DividerSoft()
+            SettingsToggle(if(language==AppLanguage.FA) "پاک‌کردن خودکار کلیپ‌بورد" else "Clear clipboard automatically", clearClipboard, Icons.Default.ContentPasteOff) { scope.launch { store.setClearClipboard(it) } }
+            DividerSoft()
+            SettingsToggle(if(language==AppLanguage.FA) "یادآوری ساعت ۸ شب" else "8 PM reminder", reminder, Icons.Default.Notifications) { value ->
+                scope.launch { store.setReminder(value) }
+                if (value) {
+                    if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    else ReminderWorker.schedule(context)
+                } else ReminderWorker.cancel(context)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        SettingsCard {
+            Text(if(language==AppLanguage.FA) "اندازه رابط کاربری" else "UI size", Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            UiScaleSelector(language, uiScale) { scope.launch { store.setUiScale(it) } }
+        }
+        Spacer(Modifier.height(14.dp))
+        Text(if(language==AppLanguage.FA) "حریم خصوصی" else "Privacy", Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.titleLarge)
+        Text(
+            if(language==AppLanguage.FA) "صدا ذخیره یا آپلود نمی‌شود. تبدیل صدا به متن فقط روی همین گوشی انجام می‌شود."
+            else "Audio is never saved or uploaded. Speech-to-text runs only on this device.",
+            Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.bodyMedium, color=MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        shape=RoundedCornerShape(16.dp),
+        color=MaterialTheme.colorScheme.surface.copy(alpha=.76f),
+        border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.55f)),
+    ) { Column(Modifier.padding(horizontal=15.dp, vertical=8.dp), content=content) }
+}
+
+@Composable private fun DividerSoft() = HorizontalDivider(color=MaterialTheme.colorScheme.outline.copy(alpha=.28f))
+
+@Composable
+private fun UiScaleSelector(language: AppLanguage, uiScale: UiScale, onChange: (UiScale) -> Unit) {
+    val labels = if(language==AppLanguage.FA) listOf("کوچک", "معمولی", "بزرگ") else listOf("Small", "Medium", "Large")
+    val scales = listOf(UiScale.SMALL, UiScale.MEDIUM, UiScale.LARGE)
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            scales.zip(labels).forEach { (scale,label) ->
+                Surface(
+                    onClick={onChange(scale)},
+                    modifier=Modifier.weight(1f),
+                    shape=RoundedCornerShape(11.dp),
+                    color=if(uiScale==scale) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.55f),
+                    border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.45f)),
+                ) {
+                    Text(label, Modifier.padding(vertical=9.dp), textAlign=TextAlign.Center, color=if(uiScale==scale) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, style=MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggle(label:String, checked:Boolean, icon:androidx.compose.ui.graphics.vector.ImageVector, onChange:(Boolean)->Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min=56.dp).clickable{onChange(!checked)}, verticalAlignment=Alignment.CenterVertically) {
+        Icon(icon, null, tint=MaterialTheme.colorScheme.primary, modifier=Modifier.size(20.dp))
+        Spacer(Modifier.width(11.dp))
+        Text(label, Modifier.weight(1f), style=MaterialTheme.typography.bodyMedium)
+        Switch(checked=checked, onCheckedChange=onChange)
+    }
+}
