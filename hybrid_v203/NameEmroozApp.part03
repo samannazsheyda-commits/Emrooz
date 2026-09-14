@@ -1,0 +1,120 @@
+            Text(if(language==AppLanguage.FA) "ذخیره تغییرات" else "Save changes")
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
+            TextButton(onClick={onSave(entry.copy(archived=!entry.archived))}) { Text(if(language==AppLanguage.FA) { if(entry.archived) "برگرداندن" else "انتقال به آرشیو" } else { if(entry.archived) "Restore" else "Move to archive" }) }
+            TextButton(onClick={confirmDelete=true}) { Text(if(language==AppLanguage.FA) "حذف" else "Delete", color=MaterialTheme.colorScheme.error) }
+        }
+    }
+}
+
+@Composable
+private fun Settings(store: SettingsStore, onBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) ReminderWorker.schedule(context)
+    }
+    val theme by store.theme.collectAsState(initial=AppTheme.DAY)
+    val language by store.language.collectAsState(initial=AppLanguage.FA)
+    val uiScale by store.uiScale.collectAsState(initial=UiScale.MEDIUM)
+    val speechMode by store.speechMode.collectAsState(initial=SpeechMode.PRIVATE_OFFLINE)
+    val disclosureAccepted by store.highAccuracyDisclosureAccepted.collectAsState(initial=false)
+    val systemSpeechAvailable = remember { SystemSpeechEngine.isAvailable(context) }
+    val systemOnDeviceAvailable = remember { SystemSpeechEngine.isOnDeviceAvailable(context) }
+    var showSpeechDisclosure by remember { mutableStateOf(false) }
+    val lock by store.lockEnabled.collectAsState(initial=true)
+    val reminder by store.reminderEnabled.collectAsState(initial=true)
+    val sound by store.soundEnabled.collectAsState(initial=true)
+    val haptics by store.hapticsEnabled.collectAsState(initial=true)
+    val clearClipboard by store.clearClipboardEnabled.collectAsState(initial=true)
+    val align = if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left
+
+    if (showSpeechDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showSpeechDisclosure = false },
+            title = { Text(if(language==AppLanguage.FA) "دقت بیشتر" else "Higher accuracy") },
+            text = {
+                Text(
+                    if(language==AppLanguage.FA) "سرویس گفتار گوشی ممکن است بسته به تنظیمات دستگاه، صدا را خارج از «امروز» پردازش کند و از اینترنت استفاده کند. خودِ امروز هیچ فایل صوتی ذخیره نمی‌کند."
+                    else "Your device speech service may process speech outside Emrooz and may use the internet depending on device settings. Emrooz itself never saves an audio file."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSpeechDisclosure = false
+                    scope.launch {
+                        store.setHighAccuracyDisclosureAccepted(true)
+                        store.setSpeechMode(SpeechMode.SYSTEM_HIGH_ACCURACY)
+                    }
+                }) { Text(if(language==AppLanguage.FA) "تأیید" else "Continue") }
+            },
+            dismissButton = { TextButton(onClick = { showSpeechDisclosure = false }) { Text(if(language==AppLanguage.FA) "لغو" else "Cancel") } },
+        )
+    }
+
+    Column(Modifier.fillMaxSize().padding(horizontal=18.dp, vertical=14.dp)) {
+        Row(verticalAlignment=Alignment.CenterVertically) {
+            GlassIconButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, if(language==AppLanguage.FA) "برگشت" else "Back")
+            Spacer(Modifier.weight(1f))
+            FixedLanguageSwitch(language) { scope.launch { store.setLanguage(it) } }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(if(language==AppLanguage.FA) "تنظیمات" else "Settings", Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(14.dp))
+
+        SettingsCard {
+            SettingsToggle(if(language==AppLanguage.FA) "حالت شب" else "Dark mode", theme==AppTheme.NIGHT, Icons.Default.DarkMode) { enabled -> scope.launch { store.setTheme(if(enabled) AppTheme.NIGHT else AppTheme.DAY) } }
+            DividerSoft()
+            SettingsToggle(if(language==AppLanguage.FA) "صدای تأیید" else "Confirmation sounds", sound, Icons.AutoMirrored.Filled.VolumeUp) { scope.launch { store.setSound(it) } }
+            DividerSoft()
+            SettingsToggle(if(language==AppLanguage.FA) "لرزش دکمه‌ها" else "Button haptics", haptics, Icons.Default.Vibration) { scope.launch { store.setHaptics(it) } }
+        }
+        Spacer(Modifier.height(10.dp))
+        SettingsCard {
+            SettingsToggle(if(language==AppLanguage.FA) "قفل و اثر انگشت" else "Passcode & fingerprint", lock, Icons.Default.Fingerprint) { scope.launch { store.setLock(it) } }
+            DividerSoft()
+            SettingsToggle(if(language==AppLanguage.FA) "پاک‌کردن خودکار کلیپ‌بورد" else "Clear clipboard automatically", clearClipboard, Icons.Default.ContentPasteOff) { scope.launch { store.setClearClipboard(it) } }
+            DividerSoft()
+            SettingsToggle(if(language==AppLanguage.FA) "یادآوری ساعت ۸ شب" else "8 PM reminder", reminder, Icons.Default.Notifications) { value ->
+                scope.launch { store.setReminder(value) }
+                if (value) {
+                    if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    else ReminderWorker.schedule(context)
+                } else ReminderWorker.cancel(context)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        SettingsCard {
+            Text(if(language==AppLanguage.FA) "اندازه رابط کاربری" else "UI size", Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            UiScaleSelector(language, uiScale) { scope.launch { store.setUiScale(it) } }
+        }
+        Spacer(Modifier.height(10.dp))
+        SettingsCard {
+            Text(if(language==AppLanguage.FA) "موتور تبدیل صدا به متن" else "Speech-to-text engine", Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(7.dp))
+            SpeechModeOption(
+                selected = speechMode == SpeechMode.PRIVATE_OFFLINE,
+                enabled = true,
+                title = if(language==AppLanguage.FA) "خصوصی و آفلاین — Shenava" else "Private & offline — Shenava",
+                subtitle = if(language==AppLanguage.FA) "بدون اینترنت؛ صدا از گوشی خارج نمی‌شود" else "No internet; speech stays on this device",
+                onClick = { scope.launch { store.setSpeechMode(SpeechMode.PRIVATE_OFFLINE) } },
+            )
+            DividerSoft()
+            SpeechModeOption(
+                selected = speechMode == SpeechMode.SYSTEM_HIGH_ACCURACY,
+                enabled = systemSpeechAvailable,
+                title = if(language==AppLanguage.FA) "دقت بیشتر — سرویس گفتار گوشی" else "Higher accuracy — device speech service",
+                subtitle = if (!systemSpeechAvailable) {
+                    if(language==AppLanguage.FA) "روی این گوشی در دسترس نیست" else "Not available on this device"
+                } else if (systemOnDeviceAvailable) {
+                    if(language==AppLanguage.FA) "این گوشی سرویس تشخیص گفتار روی دستگاه هم دارد" else "This device also has on-device recognition"
+                } else {
+                    if(language==AppLanguage.FA) "ممکن است برای تشخیص گفتار از اینترنت استفاده کند" else "May use internet for recognition"
+                },
+                onClick = {
+                    if (disclosureAccepted) scope.launch { store.setSpeechMode(SpeechMode.SYSTEM_HIGH_ACCURACY) }
+                    else showSpeechDisclosure = true
+                },
+            )
+        }
