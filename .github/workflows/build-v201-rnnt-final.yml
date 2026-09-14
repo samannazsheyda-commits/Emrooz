@@ -28,7 +28,7 @@ jobs:
           tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
           test -f /tmp/emrooz/app/build.gradle.kts
 
-      - name: Apply deterministic JVM 17 compatibility patch
+      - name: Apply deterministic build compatibility patch
         shell: bash
         working-directory: /tmp/emrooz
         run: |
@@ -47,10 +47,16 @@ jobs:
           if 'sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17' not in s:
               assert marker in s, 'buildFeatures marker not found'
               s = s.replace(marker, patch + marker, 1)
-              p.write_text(s)
+          s = s.replace('androidx.room:room-runtime:2.6.1', 'androidx.room:room-runtime:2.8.5')
+          s = s.replace('androidx.room:room-ktx:2.6.1', 'androidx.room:room-ktx:2.8.5')
+          s = s.replace('androidx.room:room-compiler:2.6.1', 'androidx.room:room-compiler:2.8.5')
+          p.write_text(s)
           PY
           grep -q 'sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17' app/build.gradle.kts
           grep -q 'targetCompatibility = org.gradle.api.JavaVersion.VERSION_17' app/build.gradle.kts
+          grep -q 'room-runtime:2.8.5' app/build.gradle.kts
+          grep -q 'room-ktx:2.8.5' app/build.gradle.kts
+          grep -q 'room-compiler:2.8.5' app/build.gradle.kts
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -93,7 +99,7 @@ jobs:
         working-directory: /tmp/emrooz
         run: |
           set -euo pipefail
-          gradle --no-daemon --stacktrace --info clean :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+          gradle --no-daemon clean :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 
       - name: Sign aligned release APK
         shell: bash
@@ -148,6 +154,7 @@ jobs:
           grep -R -q 'ThemeMode.DAY' app/src/main/java/com/nameemrooz/journal
           grep -q 'sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17' app/build.gradle.kts
           grep -q 'targetCompatibility = org.gradle.api.JavaVersion.VERSION_17' app/build.gradle.kts
+          grep -q 'room-compiler:2.8.5' app/build.gradle.kts
 
           APK_SHA=$(sha256sum "$APK" | awk '{print $1}')
           APK_SIZE=$(stat -c '%s' "$APK")
@@ -155,7 +162,7 @@ jobs:
           cat > /tmp/out/Emrooz-v2.0.1-QA-FA.md <<EOF
           # گزارش QA نهایی Emrooz v2.0.1
 
-          1. PASS — بازسازی سورس با SHA-256 دقیق آرشیو و اعمال اصلاح deterministic برای JVM 17.
+          1. PASS — بازسازی سورس با SHA-256 دقیق آرشیو و اعمال اصلاح deterministic سازگاری build.
           2. PASS — قراردادهای Shenava RNNT و UI/Lock/Home و هش دارایی‌های UI تأیید شد.
           3. PASS — تست‌های واحد Gradle اجرا و پاس شدند.
           4. PASS — Android lintRelease بدون خطای مسدودکننده پاس شد.
@@ -166,6 +173,7 @@ jobs:
           9. PASS — ZIP/zipalign، package/version/minSdk/targetSdk و arm64-v8a-only تأیید شد.
           10. PASS — امضای APK با apksigner تأیید شد.
 
+          Build compatibility: Java/Kotlin JVM 17 + Room 2.8.5
           APK SHA-256: $APK_SHA
           APK size: $APK_SIZE bytes
           Signing certificate SHA-256: $CERT
