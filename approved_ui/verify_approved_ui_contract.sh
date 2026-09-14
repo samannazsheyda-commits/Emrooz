@@ -9,6 +9,13 @@ MAIN="$ROOT/app/src/main/java/com/nameemrooz/journal/MainActivity.kt"
 MANIFEST="$ROOT/app/src/main/AndroidManifest.xml"
 SPEECH="$ROOT/app/src/main/java/com/nameemrooz/journal/speech"
 ADAPTIVE="$ROOT/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml"
+STYLE="$ROOT/app/src/main/res/values/styles.xml"
+
+# API 26 compatibility: navigation-bar light appearance is applied at runtime via
+# WindowCompat in Theme.kt. Do not leave the API-27-only XML attribute in values/.
+if [[ -f "$STYLE" ]]; then
+  sed -i '/android:windowLightNavigationBar/d' "$STYLE"
+fi
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 need() { rg -q --fixed-strings "$2" "$1" || fail "$3"; }
