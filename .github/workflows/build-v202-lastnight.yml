@@ -1,0 +1,75 @@
+name: Build Emrooz v2.0.2 Last-Night
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-v202-lastnight.yml'
+      - 'ci/lastnight/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          echo '8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz' | sha256sum -c -
+          mkdir -p /tmp/emrooz && tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ripgrep imagemagick
+
+      - name: Apply approved final state
+        working-directory: /tmp/emrooz
+        run: bash "$GITHUB_WORKSPACE/ci/lastnight/apply.sh"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Source QA
+        working-directory: /tmp/emrooz
+        run: bash "$GITHUB_WORKSPACE/ci/lastnight/source_qa.sh"
+
+      - name: Test lint build
+        working-directory: /tmp/emrooz
+        run: gradle --no-daemon clean :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+
+      - name: Sign APK
+        working-directory: /tmp/emrooz
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          mkdir -p /tmp/out
+          keytool -genkeypair -noprompt -keystore /tmp/emrooz.jks -storepass emroozrelease -keypass emroozrelease -alias emrooz -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Emrooz,O=Emrooz,C=DE'
+          "$BT/zipalign" -f 4 app/build/outputs/apk/release/app-release-unsigned.apk /tmp/out/aligned.apk
+          "$BT/apksigner" sign --ks /tmp/emrooz.jks --ks-pass pass:emroozrelease --key-pass pass:emroozrelease --out /tmp/out/Emrooz-v2.0.2-LASTNIGHT-FINAL-arm64.apk /tmp/out/aligned.apk
+
+      - name: Final APK QA
+        working-directory: /tmp/emrooz
+        run: bash "$GITHUB_WORKSPACE/ci/lastnight/final_qa.sh"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v2.0.2-LASTNIGHT-FINAL
+          path: |
+            /tmp/out/Emrooz-v2.0.2-LASTNIGHT-FINAL-arm64.apk
+            /tmp/out/Emrooz-v2.0.2-QA-FA.md
+          if-no-files-found: error
+          retention-days: 30
