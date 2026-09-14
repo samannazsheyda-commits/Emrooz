@@ -1,0 +1,120 @@
+
+        LiveTranscriptSurface(listening = listening, modifier = Modifier.fillMaxWidth().weight(1f)) {
+                Column(Modifier.fillMaxSize().padding(horizontal=20.dp, vertical=18.dp)) {
+                    Text(if(listening) { if(language==AppLanguage.FA) "در حال نوشتن…" else "Writing live…" } else { if(language==AppLanguage.FA) "نامهٔ امروز" else "Today’s letter" }, Modifier.fillMaxWidth(), textAlign=if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left, color=MaterialTheme.colorScheme.primary, style=MaterialTheme.typography.titleLarge)
+                    HorizontalDivider(Modifier.padding(vertical=10.dp), color=MaterialTheme.colorScheme.outline.copy(alpha=.42f))
+                    if (editing) {
+                        OutlinedTextField(value=text, onValueChange={text=it}, modifier=Modifier.fillMaxSize(), textStyle=MaterialTheme.typography.bodyLarge, shape=RoundedCornerShape(12.dp))
+                    } else {
+                        Text(if(text.isBlank()) { if(language==AppLanguage.FA) "وقتی شروع به صحبت کنی، متن زنده همین‌جا نمایش داده می‌شود." else "Your live transcript will appear here when you start speaking." } else text,
+                            Modifier.fillMaxWidth(), textAlign=if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left, style=MaterialTheme.typography.bodyLarge)
+                    }
+                    error?.let { Spacer(Modifier.height(10.dp)); Text(it, color=MaterialTheme.colorScheme.error) }
+                }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        FilledIconButton(
+            onClick={
+                error=null
+                if(listening) engine.stop()
+                else if(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) engine.start()
+                else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+            },
+            enabled=ready,
+            modifier=Modifier.size(78.dp), shape=CircleShape,
+        ) { Icon(if(listening) Icons.Default.Stop else Icons.Default.Mic, null, Modifier.size(32.dp)) }
+        Text(if(listening) { if(language==AppLanguage.FA) "برای توقف لمس کن" else "Tap to stop" } else { if(language==AppLanguage.FA) "شروع صحبت" else "Start speaking" }, style=MaterialTheme.typography.titleMedium)
+
+        if(text.isNotBlank() && !listening) {
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                ResultAction(if(language==AppLanguage.FA) "ذخیره" else "Save", Icons.Default.Inventory2, Modifier.weight(1f)) { onSave(text); text=""; editing=false }
+                ResultAction(if(language==AppLanguage.FA) "ویرایش" else "Edit", Icons.Default.Edit, Modifier.weight(1f)) { editing=!editing }
+                ResultAction(if(language==AppLanguage.FA) "کپی" else "Copy", Icons.Default.ContentCopy, Modifier.weight(1f)) {
+                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Emrooz", text))
+                }
+            }
+        }
+        TextButton(onClick=onList) { Text(if(language==AppLanguage.FA) "آرشیو نوشته‌ها" else "Notes archive") }
+    }
+}
+
+private fun localizeSpeechError(message: String, language: AppLanguage): String {
+    if (language == AppLanguage.FA) return message
+    return when (message) {
+        "مدل فارسی آماده نشد" -> "Offline speech model is not ready"
+        "چند لحظه صبر کن تا نوشتن آماده شود" -> "Please wait while speech recognition gets ready"
+        "برای نوشتن با صدا اجازه‌ی میکروفون لازم است" -> "Microphone permission is required"
+        "میکروفون آماده نشد" -> "Microphone is not ready"
+        "تبدیل صدا به متن انجام نشد" -> "Speech-to-text failed"
+        "دریافت صدا از میکروفون قطع شد" -> "Microphone input stopped"
+        else -> message
+    }
+}
+
+@Composable
+private fun FixedLanguageSwitch(language: AppLanguage, onChange: (AppLanguage) -> Unit) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Surface(shape=RoundedCornerShape(12.dp), color=MaterialTheme.colorScheme.surface.copy(alpha=.68f), border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.7f))) {
+            Row(Modifier.padding(3.dp)) {
+                listOf(AppLanguage.EN to "EN", AppLanguage.FA to "فا").forEach { (item,label) ->
+                    Surface(onClick={onChange(item)}, shape=RoundedCornerShape(11.dp), color=if(language==item) MaterialTheme.colorScheme.primary else Color.Transparent) {
+                        Text(label, Modifier.width(42.dp).padding(vertical=8.dp), textAlign=TextAlign.Center, color=if(language==item) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, style=MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlassIconButton(onClick:()->Unit, icon: androidx.compose.ui.graphics.vector.ImageVector, description:String) {
+    Surface(onClick=onClick, modifier=Modifier.size(42.dp), shape=RoundedCornerShape(12.dp), color=MaterialTheme.colorScheme.surface.copy(alpha=.68f), border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.7f))) {
+        Box(contentAlignment=Alignment.Center) { Icon(icon, description, tint=MaterialTheme.colorScheme.onSurface) }
+    }
+}
+
+@Composable
+private fun ResultAction(label:String, icon:androidx.compose.ui.graphics.vector.ImageVector, modifier:Modifier=Modifier, onClick:()->Unit) {
+    Surface(onClick=onClick, modifier=modifier.height(54.dp), shape=RoundedCornerShape(12.dp), color=MaterialTheme.colorScheme.surface.copy(alpha=.82f), border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.7f))) {
+        Column(horizontalAlignment=Alignment.CenterHorizontally, verticalArrangement=Arrangement.Center) {
+            Icon(icon, null, Modifier.size(19.dp), tint=MaterialTheme.colorScheme.primary)
+            Text(label, style=MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun LiveTranscriptSurface(
+    listening: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    val transition = rememberInfiniteTransition(label = "live-transcript-glow")
+    val glow by transition.animateFloat(
+        initialValue = 0.18f,
+        targetValue = 0.64f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1450, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "live-transcript-glow-alpha",
+    )
+    val accent = MaterialTheme.colorScheme.primary
+    val border = if (listening) accent.copy(alpha = 0.42f + glow * 0.28f) else MaterialTheme.colorScheme.outline.copy(alpha = .62f)
+    val shadowModifier = if (listening) {
+        Modifier.shadow(
+            elevation = (3f + glow * 7f).dp,
+            shape = shape,
+            ambientColor = accent.copy(alpha = .14f + glow * .10f),
+            spotColor = accent.copy(alpha = .16f + glow * .12f),
+        )
+    } else Modifier
+
+    Surface(
+        modifier = modifier.then(shadowModifier),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = if (listening) .88f else .74f),
+        shape = shape,
+        border = BorderStroke(if (listening) 1.25.dp else 1.dp, border),
