@@ -39,6 +39,14 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      - name: Install CI tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+          rg --version
+
       - name: QA 1-2 - source, engine and approved UI contracts
         shell: bash
         working-directory: /tmp/emrooz
