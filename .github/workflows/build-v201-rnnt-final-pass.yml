@@ -1,0 +1,155 @@
+name: Build Emrooz v2.0.1 RNNT Final PASS
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-v201-rnnt-final-pass.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          echo '8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz' | sha256sum -c -
+          mkdir -p /tmp/emrooz
+          tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+
+      - name: Apply deterministic compatibility fixes
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle.kts')
+          s=p.read_text()
+          marker='    buildFeatures { compose = true; buildConfig = true }\n'
+          jvm17='''    compileOptions {\n        sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17\n        targetCompatibility = org.gradle.api.JavaVersion.VERSION_17\n    }\n\n'''
+          if 'sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17' not in s:
+              s=s.replace(marker,jvm17+marker,1)
+          s=s.replace('androidx.room:room-runtime:2.6.1','androidx.room:room-runtime:2.8.5')
+          s=s.replace('androidx.room:room-ktx:2.6.1','androidx.room:room-ktx:2.8.5')
+          s=s.replace('androidx.room:room-compiler:2.6.1','androidx.room:room-compiler:2.8.5')
+          p.write_text(s)
+
+          mpath=Path('app/src/main/AndroidManifest.xml')
+          m=mpath.read_text()
+          if 'xmlns:tools=' not in m:
+              m=m.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">','<manifest xmlns:android="http://schemas.android.com/apk/res/android"\n    xmlns:tools="http://schemas.android.com/tools">',1)
+          if 'androidx.work.WorkManagerInitializer' not in m:
+              provider='''        <provider\n            android:name="androidx.startup.InitializationProvider"\n            android:authorities="${applicationId}.androidx-startup"\n            android:exported="false"\n            tools:node="merge">\n            <meta-data\n                android:name="androidx.work.WorkManagerInitializer"\n                android:value="androidx.startup"\n                tools:node="remove" />\n        </provider>\n'''
+              m=m.replace('    </application>',provider+'    </application>',1)
+          mpath.write_text(m)
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Install QA tool
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: QA contracts and build
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          bash tools/test_shenava_rnnt_contract.sh
+          bash tools/verify_home_ui_contract.sh
+          bash tools/verify_live_engine_contract.sh
+          bash tools/verify_lock_contract.sh
+          bash tools/verify_ui_contract.sh
+          echo '1b33b58eefdbd9332c49a03e4b35defeba6f6f62132f8b8e0be97f03844649de  app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt' | sha256sum -c -
+          echo 'e398b7374de55a250f1c87620385e9e354df3f458ac0d4ece3226e930b349379  app/src/main/res/drawable/ic_launcher_foreground.xml' | sha256sum -c -
+          echo '0069292828dfac9a7d98294f1bfefd0e787cb3f008c49e1b2780e9a9f66ca5b5  app/src/main/res/drawable-nodpi/splash_emrooz_light.webp' | sha256sum -c -
+          echo 'bd36788fa9fdc8dddf58b6221213dc9a390a70f758cd203f7a6efa1b3be499f5  app/src/main/res/drawable-nodpi/splash_emrooz_dark.webp' | sha256sum -c -
+          gradle --no-daemon clean :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+
+      - name: Sign APK
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          mkdir -p /tmp/out
+          keytool -genkeypair -noprompt -keystore /tmp/emrooz.jks -storepass emroozrelease -keypass emroozrelease -alias emrooz -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Emrooz,O=Emrooz,C=DE'
+          "$BT/zipalign" -f 4 app/build/outputs/apk/release/app-release-unsigned.apk /tmp/out/aligned.apk
+          "$BT/apksigner" sign --ks /tmp/emrooz.jks --ks-pass pass:emroozrelease --key-pass pass:emroozrelease --out /tmp/out/Emrooz-v2.0.1-Shenava-RNNT-Final-arm64.apk /tmp/out/aligned.apk
+
+      - name: QA final APK
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          APK=/tmp/out/Emrooz-v2.0.1-Shenava-RNNT-Final-arm64.apk
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          "$BT/zipalign" -c -v 4 "$APK" >/tmp/zipalign.txt
+          "$BT/apksigner" verify --verbose --print-certs "$APK" >/tmp/signature.txt
+          "$BT/aapt" dump badging "$APK" >/tmp/badging.txt
+          "$BT/aapt" dump permissions "$APK" >/tmp/permissions.txt
+          unzip -t "$APK" >/tmp/ziptest.txt
+          grep -q "package: name='com.nameemrooz.journal' versionCode='31' versionName='2.0.1'" /tmp/badging.txt
+          grep -q "sdkVersion:'26'" /tmp/badging.txt
+          grep -q "targetSdkVersion:'35'" /tmp/badging.txt
+          ! grep -q 'android.permission.INTERNET' /tmp/permissions.txt
+          grep -q 'android:allowBackup="false"' app/src/main/AndroidManifest.xml
+          test "$(unzip -Z1 "$APK" | grep '^lib/' | cut -d/ -f2 | sort -u | tr '\n' ' ')" = 'arm64-v8a '
+          unzip -p "$APK" assets/models/shenava_v15_rnnt_int8/encoder.int8.onnx >/tmp/encoder.onnx
+          unzip -p "$APK" assets/models/shenava_v15_rnnt_int8/decoder.int8.onnx >/tmp/decoder.onnx
+          unzip -p "$APK" assets/models/shenava_v15_rnnt_int8/joiner.int8.onnx >/tmp/joiner.onnx
+          unzip -p "$APK" assets/models/shenava_v15_rnnt_int8/tokens.txt >/tmp/tokens.txt
+          echo 'b9d975c1af77002f83897017e3adaaa6510148c6ba332df92b8d281369f2fdd3  /tmp/encoder.onnx' | sha256sum -c -
+          echo '0adaad326a536dfbb30c67287e909b4e6f0775fccb8c3ca47270890364824947  /tmp/decoder.onnx' | sha256sum -c -
+          echo 'e441ed265c961ff4a2436aa8bc36638e65849445e7a1f65cf263f0c310593dde  /tmp/joiner.onnx' | sha256sum -c -
+          echo '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  /tmp/tokens.txt' | sha256sum -c -
+          ! unzip -Z1 "$APK" | grep -Eqi 'whisper|rizeh|shenava_v10|ctc_model'
+          grep -R -q 'FLAG_SECURE' app/src/main/java
+          ! grep -R -Eqi 'FileOutputStream|AudioRecord.*write|\.wav|\.pcm' app/src/main/java/com/nameemrooz/journal/speech
+          grep -R -q 'AppTheme.DAY' app/src/main/java/com/nameemrooz/journal
+          APK_SHA=$(sha256sum "$APK" | awk '{print $1}')
+          APK_SIZE=$(stat -c '%s' "$APK")
+          CERT=$(grep -m1 'Signer #1 certificate SHA-256 digest:' /tmp/signature.txt | sed 's/.*digest: //')
+          cat > /tmp/out/Emrooz-v2.0.1-QA-FA.md <<EOF
+          # گزارش QA نهایی Emrooz v2.0.1
+
+          1. PASS — بازسازی دقیق سورس.
+          2. PASS — قراردادهای Shenava RNNT و UI/Lock/Home تأیید شد.
+          3. PASS — تست‌های واحد پاس شدند.
+          4. PASS — lintRelease پاس شد.
+          5. PASS — assembleRelease پاس شد.
+          6. PASS — چهار فایل Shenava v1.5 RNNT با هش صحیح داخل APK هستند.
+          7. PASS — INTERNET permission وجود ندارد و حریم خصوصی تأیید شد.
+          8. PASS — UI تأییدشده و تم روشن نصب تازه تأیید شد.
+          9. PASS — ZIP/zipalign، نسخه‌ها و arm64-v8a-only تأیید شد.
+          10. PASS — امضای APK تأیید شد.
+
+          APK SHA-256: $APK_SHA
+          APK size: $APK_SIZE bytes
+          Signing certificate SHA-256: $CERT
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v2.0.1-Shenava-RNNT-Final
+          path: |
+            /tmp/out/Emrooz-v2.0.1-Shenava-RNNT-Final-arm64.apk
+            /tmp/out/Emrooz-v2.0.1-QA-FA.md
+          if-no-files-found: error
+          retention-days: 30
