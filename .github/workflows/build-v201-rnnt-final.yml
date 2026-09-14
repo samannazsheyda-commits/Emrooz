@@ -93,7 +93,7 @@ jobs:
         working-directory: /tmp/emrooz
         run: |
           set -euo pipefail
-          gradle --no-daemon clean :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+          gradle --no-daemon --stacktrace --info clean :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 
       - name: Sign aligned release APK
         shell: bash
