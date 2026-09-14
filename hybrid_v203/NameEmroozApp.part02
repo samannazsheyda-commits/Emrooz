@@ -1,0 +1,120 @@
+        )
+    } else Modifier
+
+    Surface(
+        modifier = modifier.then(shadowModifier),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = if (listening) .88f else .74f),
+        shape = shape,
+        border = BorderStroke(if (listening) 1.25.dp else 1.dp, border),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            content()
+            if (listening) {
+                Box(
+                    Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
+                        .alpha(.20f + glow * .65f)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color.Transparent, accent.copy(alpha=.35f), Color.White.copy(alpha=.85f), accent.copy(alpha=.35f), Color.Transparent)
+                            )
+                        )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Entries(
+    language: AppLanguage,
+    archivedScreen: Boolean,
+    entries: List<JournalEntry>,
+    onBack: () -> Unit,
+    onEntry: (JournalEntry) -> Unit,
+    onArchive: (() -> Unit)?,
+) {
+    val title = if (language == AppLanguage.FA) {
+        if (archivedScreen) "آرشیو" else "نوشته‌های قبلی"
+    } else {
+        if (archivedScreen) "Archive" else "Previous notes"
+    }
+    val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left
+    Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GlassIconButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, if(language==AppLanguage.FA) "برگشت" else "Back")
+            Spacer(Modifier.width(12.dp))
+            Text(title, Modifier.weight(1f), textAlign = align, style = MaterialTheme.typography.headlineMedium)
+        }
+        Spacer(Modifier.height(18.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            items(entries, key = { it.id }) { e ->
+                Surface(
+                    onClick = { onEntry(e) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha=.78f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.55f)),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f), horizontalAlignment = if(language==AppLanguage.FA) Alignment.End else Alignment.Start) {
+                            Text(JalaliDate.weekday(e.createdAt), style = MaterialTheme.typography.titleMedium)
+                            Text(JalaliDate.date(e.createdAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(JalaliDate.time(e.createdAt), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+            if (onArchive != null) item {
+                TextButton(onClick = onArchive, Modifier.fillMaxWidth()) { Text(if(language==AppLanguage.FA) "آرشیو" else "Archive") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Detail(
+    language: AppLanguage,
+    entry: JournalEntry?,
+    onBack: () -> Unit,
+    onSave: (JournalEntry) -> Unit,
+    onDelete: (JournalEntry) -> Unit,
+) {
+    if (entry == null) { LaunchedEffect(Unit) { onBack() }; return }
+    var text by remember(entry.id) { mutableStateOf(entry.text) }
+    var confirmDelete by remember(entry.id) { mutableStateOf(false) }
+    val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(if(language==AppLanguage.FA) "این نوشته حذف شود؟" else "Delete this note?") },
+            text = { Text(if(language==AppLanguage.FA) "بعد از حذف، نوشته قابل برگرداندن نیست." else "This cannot be undone.") },
+            confirmButton = { TextButton(onClick = { confirmDelete=false; onDelete(entry) }) { Text(if(language==AppLanguage.FA) "حذف" else "Delete", color=MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { confirmDelete=false }) { Text(if(language==AppLanguage.FA) "نه" else "Cancel") } },
+        )
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal=18.dp, vertical=14.dp)) {
+        Row(verticalAlignment=Alignment.CenterVertically) {
+            GlassIconButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, if(language==AppLanguage.FA) "برگشت" else "Back")
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), horizontalAlignment = if(language==AppLanguage.FA) Alignment.End else Alignment.Start) {
+                Text(JalaliDate.weekday(entry.createdAt), textAlign=align, style=MaterialTheme.typography.titleLarge)
+                Text("${JalaliDate.date(entry.createdAt)}  •  ${JalaliDate.time(entry.createdAt)}", textAlign=align, style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.primary)
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        OutlinedTextField(
+            value=text,
+            onValueChange={text=it},
+            modifier=Modifier.fillMaxWidth().weight(1f),
+            textStyle=MaterialTheme.typography.bodyLarge.copy(textAlign=align),
+            shape=RoundedCornerShape(16.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        Button(onClick={onSave(entry.copy(text=text))}, Modifier.fillMaxWidth().height(52.dp), shape=RoundedCornerShape(12.dp)) {
