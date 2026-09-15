@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: emrooz-v211-hotfix
+  group: emrooz-v211-hotfix-emulator-retry
   cancel-in-progress: false
 
 jobs:
@@ -252,28 +252,39 @@ jobs:
       - name: Create Android 35 emulator
         run: |
           set -euo pipefail
-          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$SDK_ROOT"
+          export PATH="$SDK_ROOT/platform-tools:$SDK_ROOT/emulator:$PATH"
           sudo chmod 666 /dev/kvm || true
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
-          AVDMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name avdmanager | sort -V | tail -1)"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          AVDMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name avdmanager | sort -V | tail -1)"
           test -x "$SDKMANAGER" && test -x "$AVDMANAGER"
-          "$SDKMANAGER" "system-images;android-35;google_apis;x86_64"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" \
+            "platform-tools" "emulator" "platforms;android-35" \
+            "system-images;android-35;google_apis;x86_64"
+          ADB="$SDK_ROOT/platform-tools/adb"
+          if [ ! -x "$ADB" ]; then
+            ADB="$(find "$SDK_ROOT" -type f -path '*/platform-tools/adb' -perm -u+x | sort -V | head -1)"
+          fi
+          test -x "$ADB"
+          export PATH="$(dirname "$ADB"):$SDK_ROOT/emulator:$PATH"
+          "$ADB" start-server
           echo no | "$AVDMANAGER" create avd --force --name emrooz-ci --package "system-images;android-35;google_apis;x86_64"
-          "$ANDROID_HOME/emulator/emulator" @emrooz-ci \
+          "$SDK_ROOT/emulator/emulator" @emrooz-ci \
             -no-window -no-audio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect -memory 4096 -partition-size 4096 \
             > /tmp/out/emulator-console.txt 2>&1 &
-          adb wait-for-device
+          timeout 180s "$ADB" wait-for-device
           for attempt in $(seq 1 120); do
-            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+            if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
               break
             fi
             sleep 5
           done
-          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
-          adb shell settings put global window_animation_scale 0
-          adb shell settings put global transition_animation_scale 0
-          adb shell settings put global animator_duration_scale 0
+          test "$("$ADB" shell getprop sys.boot_completed | tr -d '\r')" = "1"
+          "$ADB" shell settings put global window_animation_scale 0
+          "$ADB" shell settings put global transition_animation_scale 0
+          "$ADB" shell settings put global animator_duration_scale 0
 
       - name: 6 - Install and survive startup after splash
         working-directory: /tmp/emrooz
@@ -412,3 +423,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "Emrooz 2.1.1 — Startup and Icon Hotfix" \
             --notes-file /tmp/release-notes.md
+
