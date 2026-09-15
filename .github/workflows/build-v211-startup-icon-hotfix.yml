@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     env:
-      GRAPHIC_PACKAGE_URL: "https://oaisdmntprwestus3.blob.core.windows.net/files/00000000-2624-81fd-9535-6b663a27e768/raw?se=2026-09-15T14%3A22%3A18Z&sp=r&sv=2026-02-06&sr=b&scid=01a0a529-a5b6-723f-b6e7-4abe2c6e5283&skoid=ba81670d-b682-4d2d-9682-ac0ffdfb3fa1&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-15T05%3A11%3A31Z&ske=2026-09-16T05%3A11%3A31Z&sks=b&skv=2026-02-06&sig=v3wUsN37iPFmyamBzp6rtBoIDCpTztxWLfIrc5Z94kU%3D"
+      GRAPHIC_PACKAGE_URL: "https://oaisdmntprwestus3.blob.core.windows.net/files/00000000-2624-81fd-9535-6b663a27e768/raw?se=2026-09-15T15%3A24%3A00Z&sp=r&sv=2026-02-06&sr=b&scid=f11e059b-10fb-4400-bec3-47a5d21bc1e0&skoid=ba81670d-b682-4d2d-9682-ac0ffdfb3fa1&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-14T20%3A10%3A13Z&ske=2026-09-15T20%3A10%3A13Z&sks=b&skv=2026-02-06&sig=aeCPC1rKGU8pJkNsLHMKLyJO9eeFbR0k5UAsDAbgopQ%3D"
       PREVIOUS_SIGNING_ARTIFACT_ID: "10366086409"
       APK_NAME: "Emrooz-2.1.1-Startup-Icon-Hotfix-arm64.apk"
       RELEASE_TAG: "v2.1.1-hotfix"
@@ -320,11 +320,23 @@ jobs:
           adb shell am start -W -n com.nameemrooz.journal/.MainActivity --ez qa_bypass_lock true | tee /tmp/out/activity-first-start.txt
           sleep 25
           PID="$(adb shell pidof -s com.nameemrooz.journal | tr -d '\r')"
-          test -n "$PID"
-          adb shell dumpsys activity activities | grep -q 'mResumedActivity.*com.nameemrooz.journal'
-          adb exec-out screencap -p > /tmp/out/emulator-home-after-rnnt.png
+          adb shell dumpsys activity activities > /tmp/out/activity-dump-first.txt || true
           adb logcat -d > /tmp/out/logcat-first-start.txt
-          ! rg -n 'context_size.*metadata|FATAL EXCEPTION.*nameemrooz|Fatal signal.*nameemrooz' /tmp/out/logcat-first-start.txt
+          echo "Emrooz PID after 25s: ${PID:-<empty>}"
+          echo "Top activity after 25s:"
+          grep -E 'mResumedActivity|mFocusedApp' /tmp/out/activity-dump-first.txt || true
+          test -n "$PID"
+          grep -q 'mResumedActivity.*com.nameemrooz.journal' /tmp/out/activity-dump-first.txt || {
+            echo 'Expected Emrooz resumed activity was not found; dumpsys follows:' >&2
+            cat /tmp/out/activity-dump-first.txt >&2
+            exit 1
+          }
+          adb exec-out screencap -p > /tmp/out/emulator-home-after-rnnt.png
+          if rg -n 'context_size.*metadata|FATAL EXCEPTION.*nameemrooz|Fatal signal.*nameemrooz' /tmp/out/logcat-first-start.txt; then
+            echo 'Emrooz fatal log lines:' >&2
+            rg -n -C 4 'context_size.*metadata|FATAL EXCEPTION.*nameemrooz|Fatal signal.*nameemrooz' /tmp/out/logcat-first-start.txt >&2 || true
+            exit 1
+          fi
 
       - name: 7 - Background cover and return smoke test
         run: |
