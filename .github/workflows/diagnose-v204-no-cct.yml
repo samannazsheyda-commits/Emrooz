@@ -1,0 +1,71 @@
+name: Diagnose v2.0.4 No CCT
+
+on:
+  push:
+    branches: [work/gemini-nano-editor-v204]
+    paths:
+      - '.github/workflows/diagnose-v204-no-cct.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Reconstruct and apply overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz
+          tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+          cp hybrid_v204/root-build.gradle.kts /tmp/emrooz/build.gradle.kts
+          cp hybrid_v204/build.gradle.kts /tmp/emrooz/app/build.gradle.kts
+          MAIN=/tmp/emrooz/app/src/main/java/com/nameemrooz/journal/writing
+          TEST=/tmp/emrooz/app/src/test/java/com/nameemrooz/journal/writing
+          mkdir -p "$MAIN" "$TEST"
+          for f in PunctuationRestorer.kt LexicalSafety.kt TextEditor.kt; do cp "hybrid_v203/$f" "$MAIN/$f"; done
+          cp hybrid_v203/TextEditorSafetyTest.kt "$TEST/TextEditorSafetyTest.kt"
+          for f in WritingEnhancer.kt WritingEditSafety.kt NanoPromptClient.kt MlKitNanoPromptClient.kt GeminiNanoWritingEnhancer.kt LocalWritingEnhancer.kt WritingEnhancementCoordinator.kt; do cp "hybrid_v204/$f" "$MAIN/$f"; done
+          for f in WritingEditSafetyTest.kt GeminiNanoWritingEnhancerTest.kt WritingEnhancementCoordinatorTest.kt; do cp "hybrid_v204/$f" "$TEST/$f"; done
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/emrooz/app/build.gradle.kts')
+          s=p.read_text()
+          s=s.replace('implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")', '''implementation("com.google.mlkit:genai-prompt:1.0.0-beta4") {
+        exclude(group = "com.google.android.datatransport", module = "transport-backend-cct")
+    }''')
+          s=s.replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }','')
+          p.write_text(s)
+          PY
+      - name: Show dependency source
+        working-directory: /tmp/emrooz
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:dependencyInsight --configuration debugRuntimeClasspath --dependency transport-backend-cct || true
+      - name: Compile and test without CCT
+        working-directory: /tmp/emrooz
+        run: gradle --no-daemon :app:testDebugUnitTest --tests '*WritingEditSafetyTest*' --tests '*TextEditorSafetyTest*' --tests '*GeminiNanoWritingEnhancerTest*' --tests '*WritingEnhancementCoordinatorTest*' :app:assembleDebug
+      - name: Assert no INTERNET permission
+        working-directory: /tmp/emrooz
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:processDebugMainManifest
+          if grep -R "android.permission.INTERNET" app/build/intermediates/merged_manifest app/build/intermediates/merged_manifests 2>/dev/null; then
+            echo 'INTERNET STILL PRESENT'
+            exit 1
+          fi
+          echo 'NO INTERNET: PASS'
