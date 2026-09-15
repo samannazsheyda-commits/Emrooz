@@ -14,8 +14,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: emrooz-v211-hotfix-emulator-retry
-  cancel-in-progress: false
+  group: emrooz-v211-hotfix
+  cancel-in-progress: true
 
 jobs:
   build-test-publish:
