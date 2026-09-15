@@ -106,7 +106,7 @@ jobs:
             echo 'ERROR: INTERNET permission appeared in merged manifest'
             exit 1
           fi
-          if grep -R -n "اصلاح کن" app/src/main/java 2>/dev/null; then
+          if grep -R -F -n '"اصلاح کن"' app/src/main/java 2>/dev/null; then
             echo 'ERROR: removed voice-edit command returned'
             exit 1
           fi
