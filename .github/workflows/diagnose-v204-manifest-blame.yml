@@ -1,0 +1,52 @@
+name: Diagnose v2.0.4 Manifest Blame
+
+on:
+  push:
+    branches: [work/gemini-nano-editor-v204]
+    paths:
+      - '.github/workflows/diagnose-v204-manifest-blame.yml'
+
+jobs:
+  blame:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Reconstruct project
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz
+          tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+          cp hybrid_v204/root-build.gradle.kts /tmp/emrooz/build.gradle.kts
+          cp hybrid_v204/build.gradle.kts /tmp/emrooz/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/emrooz/app/build.gradle.kts')
+          s=p.read_text().replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }','')
+          p.write_text(s)
+          PY
+      - name: Resolve manifest and print blame
+        working-directory: /tmp/emrooz
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:processDebugMainManifest
+          echo '=== INTERNET in merged manifest ==='
+          grep -Rni -B3 -A3 'android.permission.INTERNET' app/build/intermediates/merged_manifest app/build/intermediates/merged_manifests 2>/dev/null || true
+          echo '=== merger blame ==='
+          grep -Rni -B8 -A12 'android.permission.INTERNET' app/build/intermediates/manifest_merge_blame_file app/build/intermediates/manifest_merge_blame_files 2>/dev/null || true
+          echo '=== cached dependency manifests that declare INTERNET ==='
+          grep -RIl 'android.permission.INTERNET' ~/.gradle/caches/8.13/transforms ~/.gradle/caches/modules-2/files-2.1/com.google.mlkit 2>/dev/null | head -100 || true
