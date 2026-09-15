@@ -59,12 +59,13 @@ jobs:
             cp "hybrid_v204/$f" "$MAIN/writing/$f"
           done
 
-          cat hybrid_v204/NameEmroozApp.part00 \
-              hybrid_v203/NameEmroozApp.part01 \
-              hybrid_v203/NameEmroozApp.part02 \
-              hybrid_v204/NameEmroozApp.part03 \
-              hybrid_v203/NameEmroozApp.part04 \
-              > "$MAIN/ui/NameEmroozApp.kt"
+          {
+            cat hybrid_v204/NameEmroozApp.part00; printf '\n'
+            cat hybrid_v203/NameEmroozApp.part01; printf '\n'
+            cat hybrid_v203/NameEmroozApp.part02; printf '\n'
+            cat hybrid_v204/NameEmroozApp.part03; printf '\n'
+            cat hybrid_v203/NameEmroozApp.part04; printf '\n'
+          } > "$MAIN/ui/NameEmroozApp.kt"
 
           cp hybrid_v203/TextEditorSafetyTest.kt "$TEST/writing/TextEditorSafetyTest.kt"
           cp hybrid_v203/StableDisplayComposerTest.kt "$TEST/writing/StableDisplayComposerTest.kt"
