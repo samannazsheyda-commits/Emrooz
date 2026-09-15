@@ -34,21 +34,45 @@ jobs:
           tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
           cp hybrid_v204/root-build.gradle.kts /tmp/emrooz/build.gradle.kts
           cp hybrid_v204/build.gradle.kts /tmp/emrooz/app/build.gradle.kts
-      - name: Apply writing test overlay
+      - name: Apply v2.0.3 base and v2.0.4 editor overlay
         shell: bash
         run: |
           set -euo pipefail
-          MAIN=/tmp/emrooz/app/src/main/java/com/nameemrooz/journal/writing
-          TEST=/tmp/emrooz/app/src/test/java/com/nameemrooz/journal/writing
-          mkdir -p "$MAIN" "$TEST"
-          for f in PunctuationRestorer.kt LexicalSafety.kt TextEditor.kt; do cp "hybrid_v203/$f" "$MAIN/$f"; done
-          cp hybrid_v203/TextEditorSafetyTest.kt "$TEST/TextEditorSafetyTest.kt"
+          APP=/tmp/emrooz/app/src/main
+          MAIN=/tmp/emrooz/app/src/main/java/com/nameemrooz/journal
+          TEST=/tmp/emrooz/app/src/test/java/com/nameemrooz/journal
+          mkdir -p "$MAIN/writing" "$MAIN/speech" "$MAIN/data" "$MAIN/ui" "$MAIN/util" "$TEST/writing" "$TEST/speech"
+
+          cp hybrid_v203/AndroidManifest.xml "$APP/AndroidManifest.xml"
+          cp hybrid_v203/JalaliDate.kt "$MAIN/util/JalaliDate.kt"
+          cp hybrid_v204/SettingsStore.kt "$MAIN/data/SettingsStore.kt"
+
+          for f in SpeechEngine.kt SpeechMode.kt SystemSpeechEngine.kt SystemSpeechErrorPolicy.kt TranscriptContinuity.kt LiveSpeechEngine.kt; do
+            cp "hybrid_v203/$f" "$MAIN/speech/$f"
+          done
+          cp hybrid_v204/HybridSpeechController.kt "$MAIN/speech/HybridSpeechController.kt"
+
+          for f in PunctuationRestorer.kt LexicalSafety.kt TextEditor.kt LocalPunctuationModel.kt StableDisplayComposer.kt; do
+            cp "hybrid_v203/$f" "$MAIN/writing/$f"
+          done
           for f in WritingEnhancer.kt WritingEditSafety.kt NanoPromptClient.kt MlKitNanoPromptClient.kt GeminiNanoWritingEnhancer.kt LocalWritingEnhancer.kt WritingEnhancementCoordinator.kt; do
-            [ ! -f "hybrid_v204/$f" ] || cp "hybrid_v204/$f" "$MAIN/$f"
+            cp "hybrid_v204/$f" "$MAIN/writing/$f"
           done
+
+          cat hybrid_v204/NameEmroozApp.part00 \
+              hybrid_v203/NameEmroozApp.part01 \
+              hybrid_v203/NameEmroozApp.part02 \
+              hybrid_v204/NameEmroozApp.part03 \
+              hybrid_v203/NameEmroozApp.part04 \
+              > "$MAIN/ui/NameEmroozApp.kt"
+
+          cp hybrid_v203/TextEditorSafetyTest.kt "$TEST/writing/TextEditorSafetyTest.kt"
+          cp hybrid_v203/StableDisplayComposerTest.kt "$TEST/writing/StableDisplayComposerTest.kt"
+          cp hybrid_v203/TranscriptContinuityTest.kt "$TEST/speech/TranscriptContinuityTest.kt"
           for f in WritingEditSafetyTest.kt GeminiNanoWritingEnhancerTest.kt WritingEnhancementCoordinatorTest.kt; do
-            [ ! -f "hybrid_v204/$f" ] || cp "hybrid_v204/$f" "$TEST/$f"
+            cp "hybrid_v204/$f" "$TEST/writing/$f"
           done
+
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/emrooz/app/build.gradle.kts')
@@ -56,10 +80,17 @@ jobs:
           s=s.replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }','')
           p.write_text(s)
           PY
-      - name: Run writing unit tests and compile
+      - name: Run unit tests and full debug compile
         working-directory: /tmp/emrooz
         run: |
-          gradle --no-daemon :app:testDebugUnitTest --tests '*WritingEditSafetyTest*' --tests '*TextEditorSafetyTest*' --tests '*GeminiNanoWritingEnhancerTest*' :app:compileDebugKotlin
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests '*WritingEditSafetyTest*' \
+            --tests '*TextEditorSafetyTest*' \
+            --tests '*GeminiNanoWritingEnhancerTest*' \
+            --tests '*WritingEnhancementCoordinatorTest*' \
+            --tests '*StableDisplayComposerTest*' \
+            --tests '*TranscriptContinuityTest*' \
+            :app:compileDebugKotlin
       - name: Verify merged-manifest privacy
         working-directory: /tmp/emrooz
         shell: bash
@@ -70,4 +101,8 @@ jobs:
             echo 'ERROR: INTERNET permission appeared in merged manifest'
             exit 1
           fi
-          echo 'Merged manifest privacy: PASS'
+          if grep -R "اصلاح کن" app/src/main/java 2>/dev/null; then
+            echo 'ERROR: removed voice-edit command returned'
+            exit 1
+          fi
+          echo 'Merged manifest/editor privacy: PASS'
