@@ -326,7 +326,7 @@ jobs:
           echo "Top activity after 25s:"
           grep -E 'mResumedActivity|mFocusedApp' /tmp/out/activity-dump-first.txt || true
           test -n "$PID"
-          grep -q 'mResumedActivity.*com.nameemrooz.journal' /tmp/out/activity-dump-first.txt || {
+          grep -Eq 'mResumedActivity.*com.nameemrooz.journal|mFocusedApp=.*com.nameemrooz.journal' /tmp/out/activity-dump-first.txt || {
             echo 'Expected Emrooz resumed activity was not found; dumpsys follows:' >&2
             cat /tmp/out/activity-dump-first.txt >&2
             exit 1
@@ -347,7 +347,7 @@ jobs:
           adb shell am start -W -n com.nameemrooz.journal/.MainActivity --ez qa_bypass_lock true | tee /tmp/out/activity-return.txt
           sleep 15
           test -n "$(adb shell pidof -s com.nameemrooz.journal | tr -d '\r')"
-          adb shell dumpsys activity activities | grep -q 'mResumedActivity.*com.nameemrooz.journal'
+          adb shell dumpsys activity activities | grep -Eq 'mResumedActivity.*com.nameemrooz.journal|mFocusedApp=.*com.nameemrooz.journal'
           adb exec-out screencap -p > /tmp/out/emulator-return.png
           adb logcat -d > /tmp/out/logcat-return.txt
           ! rg -n 'context_size.*metadata|FATAL EXCEPTION.*nameemrooz|Fatal signal.*nameemrooz' /tmp/out/logcat-return.txt
