@@ -270,11 +270,22 @@ jobs:
           export PATH="$(dirname "$ADB"):$SDK_ROOT/emulator:$PATH"
           "$ADB" start-server
           echo no | "$AVDMANAGER" create avd --force --name emrooz-ci --package "system-images;android-35;google_apis;x86_64"
+          EMULATOR_LOG=/tmp/out/emulator-console.txt
           "$SDK_ROOT/emulator/emulator" @emrooz-ci \
             -no-window -no-audio -no-boot-anim -no-snapshot \
-            -gpu swiftshader_indirect -memory 4096 -partition-size 4096 \
-            > /tmp/out/emulator-console.txt 2>&1 &
-          timeout 180s "$ADB" wait-for-device
+            -wipe-data -accel auto -gpu swiftshader_indirect \
+            -memory 3072 -partition-size 4096 \
+            > "$EMULATOR_LOG" 2>&1 &
+          EMULATOR_PID=$!
+          if ! timeout 600s "$ADB" wait-for-device; then
+            echo "adb devices:" >&2
+            "$ADB" devices -l >&2 || true
+            echo "emulator process:" >&2
+            ps -fp "$EMULATOR_PID" >&2 || true
+            echo "emulator console:" >&2
+            sed -n '1,240p' "$EMULATOR_LOG" >&2 || true
+            exit 1
+          fi
           for attempt in $(seq 1 120); do
             if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
               break
