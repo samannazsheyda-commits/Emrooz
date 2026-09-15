@@ -252,6 +252,7 @@ jobs:
       - name: Create Android 35 emulator
         run: |
           set -euo pipefail
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           sudo chmod 666 /dev/kvm || true
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
           AVDMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name avdmanager | sort -V | tail -1)"
@@ -278,6 +279,7 @@ jobs:
         working-directory: /tmp/emrooz
         run: |
           set -euo pipefail
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           adb install -r "$APK"
@@ -294,6 +296,7 @@ jobs:
       - name: 7 - Background cover and return smoke test
         run: |
           set -euo pipefail
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           adb shell input keyevent KEYCODE_HOME
           sleep 3
           adb shell am start -W -n com.nameemrooz.journal/.MainActivity --ez qa_bypass_lock true | tee /tmp/out/activity-return.txt
