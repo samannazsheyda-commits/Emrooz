@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      APPROVED_ICON_URL: "https://oaisdmntprnortheu.blob.core.windows.net/files/00000000-4b88-81f4-9b2f-87ba8c36305e/raw?se=2026-09-15T14%3A14%3A09Z&sp=r&sv=2026-02-06&sr=b&scid=01a0a529-a5b6-723f-b6e7-4abe2c6e5283&skoid=ba81670d-b682-4d2d-9682-ac0ffdfb3fa1&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-15T07%3A50%3A33Z&ske=2026-09-16T07%3A50%3A33Z&sks=b&skv=2026-02-06&sig=VjluRbC1S/kOJZzPq6ojpAzHUo4W/m/FmlgwqeppCG0%3D"
+      GRAPHIC_PACKAGE_URL: "https://oaisdmntprwestus3.blob.core.windows.net/files/00000000-2624-81fd-9535-6b663a27e768/raw?se=2026-09-15T14%3A22%3A18Z&sp=r&sv=2026-02-06&sr=b&scid=01a0a529-a5b6-723f-b6e7-4abe2c6e5283&skoid=ba81670d-b682-4d2d-9682-ac0ffdfb3fa1&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-15T05%3A11%3A31Z&ske=2026-09-16T05%3A11%3A31Z&sks=b&skv=2026-02-06&sig=v3wUsN37iPFmyamBzp6rtBoIDCpTztxWLfIrc5Z94kU%3D"
     steps:
       - uses: actions/checkout@v4
 
@@ -30,15 +30,48 @@ jobs:
           mkdir -p /tmp/emrooz
           tar --no-same-owner -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
 
-      - name: Download approved Emrooz icon
+      - name: Download approved graphic package
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 "$APPROVED_ICON_URL" -o /tmp/approved-emrooz-icon.png
+          curl --fail --location --retry 3 "$GRAPHIC_PACKAGE_URL" -o /tmp/graphics.zip
+          unzip -q /tmp/graphics.zip -d /tmp/graphics
+          find /tmp/graphics -type f -printf '%P\n' | sort | tee /tmp/graphics-manifest.txt
+          ICON="$(find /tmp/graphics -path '*/icons/*' -type f | grep -Ei '512.*\.png$|icon[-_ ]?512.*\.png$' | head -1)"
+          test -s "$ICON"
+          cp "$ICON" /tmp/approved-emrooz-icon.png
           file /tmp/approved-emrooz-icon.png
+
+      - name: Generate every Android launcher from the approved icon
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet Pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageOps
+
+          source = Image.open('/tmp/approved-emrooz-icon.png').convert('RGBA')
+          source = ImageOps.fit(source, (512, 512), method=Image.Resampling.LANCZOS)
+          res = Path('/tmp/emrooz/app/src/main/res')
+          for directory, size in {
+              'mipmap-mdpi': 48,
+              'mipmap-hdpi': 72,
+              'mipmap-xhdpi': 96,
+              'mipmap-xxhdpi': 144,
+              'mipmap-xxxhdpi': 192,
+          }.items():
+              target = res / directory
+              target.mkdir(parents=True, exist_ok=True)
+              icon = source.resize((size, size), Image.Resampling.LANCZOS).convert('RGB')
+              icon.save(target / 'ic_launcher.png', optimize=True)
+              icon.save(target / 'ic_launcher_round.png', optimize=True)
+
+          adaptive = res / 'drawable-nodpi' / 'ic_launcher_foreground_png.png'
+          adaptive.parent.mkdir(parents=True, exist_ok=True)
+          source.save(adaptive, optimize=True)
+          PY
 
       - name: Verify every launcher path
         run: |
-          python3 -m pip install --quiet Pillow
           python3 tests/icon/verify_launcher_icons.py \
             --reference /tmp/approved-emrooz-icon.png \
             --res /tmp/emrooz/app/src/main/res
@@ -49,5 +82,7 @@ jobs:
           name: approved-icon-and-rejected-launchers
           path: |
             /tmp/approved-emrooz-icon.png
+            /tmp/graphics-manifest.txt
             /tmp/emrooz/app/src/main/res/mipmap-*/ic_launcher*.png
+            /tmp/emrooz/app/src/main/res/drawable-nodpi/ic_launcher_foreground_png.png
           retention-days: 2
