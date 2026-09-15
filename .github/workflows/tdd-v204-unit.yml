@@ -41,8 +41,12 @@ jobs:
           APP=/tmp/emrooz/app/src/main
           MAIN=/tmp/emrooz/app/src/main/java/com/nameemrooz/journal
           TEST=/tmp/emrooz/app/src/test/java/com/nameemrooz/journal
-          mkdir -p "$MAIN/writing" "$MAIN/speech" "$MAIN/data" "$MAIN/ui" "$MAIN/util" "$TEST/writing" "$TEST/speech"
+          mkdir -p "$MAIN/writing" "$MAIN/speech" "$MAIN/data" "$MAIN/ui/theme" "$MAIN/privacy" "$MAIN/util" "$TEST/writing" "$TEST/speech"
 
+          cp approved_ui/Theme.kt "$MAIN/ui/theme/Theme.kt"
+          cp approved_ui/AppViewModel.kt "$MAIN/ui/AppViewModel.kt"
+          cp approved_ui/BiometricGate.kt "$MAIN/privacy/BiometricGate.kt"
+          cp approved_ui/MainActivity.kt "$MAIN/MainActivity.kt"
           cp hybrid_v203/AndroidManifest.xml "$APP/AndroidManifest.xml"
           cp hybrid_v203/JalaliDate.kt "$MAIN/util/JalaliDate.kt"
           cp hybrid_v204/SettingsStore.kt "$MAIN/data/SettingsStore.kt"
@@ -102,7 +106,7 @@ jobs:
             echo 'ERROR: INTERNET permission appeared in merged manifest'
             exit 1
           fi
-          if grep -R "اصلاح کن" app/src/main/java 2>/dev/null; then
+          if grep -R -n "اصلاح کن" app/src/main/java 2>/dev/null; then
             echo 'ERROR: removed voice-edit command returned'
             exit 1
           fi
