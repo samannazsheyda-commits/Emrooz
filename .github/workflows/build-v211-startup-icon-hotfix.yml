@@ -1,0 +1,408 @@
+name: Emrooz 2.1.1 Startup and Icon Hotfix
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-v211-startup-icon-hotfix.yml"
+      - "hotfix_v211/**"
+      - "tests/rnnt/**"
+      - "tests/icon/**"
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: emrooz-v211-hotfix
+  cancel-in-progress: false
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      GRAPHIC_PACKAGE_URL: "https://oaisdmntprwestus3.blob.core.windows.net/files/00000000-2624-81fd-9535-6b663a27e768/raw?se=2026-09-15T14%3A22%3A18Z&sp=r&sv=2026-02-06&sr=b&scid=01a0a529-a5b6-723f-b6e7-4abe2c6e5283&skoid=ba81670d-b682-4d2d-9682-ac0ffdfb3fa1&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-15T05%3A11%3A31Z&ske=2026-09-16T05%3A11%3A31Z&sks=b&skv=2026-02-06&sig=v3wUsN37iPFmyamBzp6rtBoIDCpTztxWLfIrc5Z94kU%3D"
+      PREVIOUS_SIGNING_ARTIFACT_ID: "10366086409"
+      APK_NAME: "Emrooz-2.1.1-Startup-Icon-Hotfix-arm64.apk"
+      RELEASE_TAG: "v2.1.1-hotfix"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build and image tools
+        run: sudo apt-get update && sudo apt-get install -y ripgrep python3-pil unzip
+
+      - name: 1 - Reconstruct clean source
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do p=$(printf '%03d' "$i"); cat "payload/v201.part$p" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do p=$(printf '%03d' "$i"); cat "payload/v201.part$p" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          echo "8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz" | sha256sum -c -
+          mkdir -p /tmp/emrooz /tmp/out
+          tar --no-same-owner -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+
+      - name: Download approved graphic package
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "$GRAPHIC_PACKAGE_URL" -o /tmp/graphics.zip
+          test "$(stat -c '%s' /tmp/graphics.zip)" = "8900376"
+          sha256sum /tmp/graphics.zip > /tmp/out/approved-graphics-sha256.txt
+          unzip -q /tmp/graphics.zip -d /tmp/graphics
+          find /tmp/graphics -type f -printf '%P\n' | sort > /tmp/out/approved-graphics-manifest.txt
+          test -s /tmp/graphics/icons/icon-512.png
+          test -s /tmp/graphics/splash/splash-light.png
+          test -s /tmp/graphics/splash/splash-dark.png
+
+      - name: Apply unchanged UI and focused hotfix
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          R="$GITHUB_WORKSPACE"
+          mkdir -p app/src/main/java/com/nameemrooz/journal/{privacy,speech,ui,ui/theme,data,util,writing}
+          cp "$R/final_rebuild/MainActivity.kt" app/src/main/java/com/nameemrooz/journal/MainActivity.kt
+          cp "$R/final_rebuild/BiometricGate.kt" app/src/main/java/com/nameemrooz/journal/privacy/BiometricGate.kt
+          cp "$R/final_rebuild/OfflinePersianTts.kt" app/src/main/java/com/nameemrooz/journal/speech/OfflinePersianTts.kt
+          cp "$R/hotfix_v211/ShenavaRnntRecognizer.kt" app/src/main/java/com/nameemrooz/journal/speech/ShenavaRnntRecognizer.kt
+          cp "$R/hotfix_v211/RnntModelSpec.java" app/src/main/java/com/nameemrooz/journal/speech/RnntModelSpec.java
+          cp "$R/approved_ui/Theme.kt" app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt
+          cp "$R/approved_ui/AppViewModel.kt" app/src/main/java/com/nameemrooz/journal/ui/AppViewModel.kt
+          cp "$R/approved_ui/SettingsStore.kt" app/src/main/java/com/nameemrooz/journal/data/SettingsStore.kt
+          cp "$R/hybrid_v203/JalaliDate.kt" app/src/main/java/com/nameemrooz/journal/util/JalaliDate.kt
+          cp "$R/hybrid_v203/SpeechEngine.kt" "$R/hybrid_v203/LiveSpeechEngine.kt" "$R/hybrid_v203/TranscriptContinuity.kt" app/src/main/java/com/nameemrooz/journal/speech/
+          cp "$R/hybrid_v203/LexicalSafety.kt" "$R/hybrid_v203/PunctuationRestorer.kt" "$R/hybrid_v203/TextEditor.kt" "$R/hybrid_v203/StableDisplayComposer.kt" "$R/hybrid_v203/LocalPunctuationModel.kt" app/src/main/java/com/nameemrooz/journal/writing/
+          cat "$R/approved_ui/NameEmroozApp.part00" "$R/approved_ui/NameEmroozApp.part01" "$R/approved_ui/NameEmroozApp.part02" "$R/approved_ui/NameEmroozApp.part03" > app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt')
+          p.write_text(p.read_text().replace(
+              'Font(R.font.abar_mid_fa_num_semibold, FontWeight.Bold)',
+              'Font(R.font.abar_mid_fa_num_bold, FontWeight.Bold)',
+          ))
+
+          p = Path('app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt')
+          s = p.read_text()
+          s = s.replace('if(language==AppLanguage.FA) "ذخیره" else "Save"', 'if(language==AppLanguage.FA) "ذخیره در آرشیو" else "Save to archive"')
+          s = s.replace('if(language==AppLanguage.FA) "آرشیو نوشته‌ها" else "Notes archive"', 'if(language==AppLanguage.FA) "نامه‌های گذشته" else "Past letters"')
+          s = s.replace('if (archivedScreen) "آرشیو" else "نوشته‌های قبلی"', 'if (archivedScreen) "نامه‌های گذشته" else "نامه‌های گذشته"')
+          s = s.replace('if (archivedScreen) "Archive" else "Previous notes"', 'if (archivedScreen) "Past letters" else "Past letters"')
+          s = s.replace('if(language==AppLanguage.FA) "آرشیو" else "Archive"', 'if(language==AppLanguage.FA) "نامه‌های گذشته" else "Past letters"')
+          s = s.replace('.align(Alignment.TopCenter)', '.align(Alignment.BottomCenter)')
+          marker = '    val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left\n    if (confirmDelete)'
+          insert = '    val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left\n    val context = LocalContext.current\n    val tts = remember { OfflinePersianTts(context) }\n    DisposableEffect(tts) { onDispose { tts.close() } }\n    if (confirmDelete)'
+          if marker not in s:
+              raise SystemExit('detail marker missing')
+          s = s.replace(marker, insert, 1)
+          marker = '        Button(onClick={onSave(entry.copy(text=text))},'
+          insert = '        TextButton(onClick={tts.speak(text)}, Modifier.fillMaxWidth()) { Text(if(language==AppLanguage.FA) "پخش با صدای آفلاین" else "Play offline voice") }\n        Button(onClick={onSave(entry.copy(text=text))},'
+          if marker not in s:
+              raise SystemExit('TTS button marker missing')
+          p.write_text(s.replace(marker, insert, 1))
+
+          p = Path('app/src/main/java/com/nameemrooz/journal/speech/LiveSpeechEngine.kt')
+          p.write_text(p.read_text().replace(
+              '"واتس اپ" to "واتس‌اپ",',
+              '"واتس اپ" to "واتس‌اپ",\n            "واتساپ" to "واتس‌اپ",\n            "قیومی" to "قیومی",',
+          ))
+          PY
+
+          mkdir -p app/src/main/res/{font,drawable-nodpi,mipmap-anydpi-v26,values}
+          cp /tmp/graphics/fonts/fa/AbarMidFaNum-Regular.otf app/src/main/res/font/abar_mid_fa_num_regular.otf
+          cp /tmp/graphics/fonts/fa/AbarMidFaNum-SemiBold.otf app/src/main/res/font/abar_mid_fa_num_semibold.otf
+          cp /tmp/graphics/fonts/fa/AbarMidFaNum-Bold.otf app/src/main/res/font/abar_mid_fa_num_bold.otf
+          cp /tmp/graphics/fonts/fa/AbarMidFaNum-ExtraBold.otf app/src/main/res/font/abar_mid_fa_num_extrabold.otf
+          cp /tmp/graphics/fonts/en/Lato-Regular.ttf app/src/main/res/font/lato_regular.ttf
+          cp /tmp/graphics/fonts/en/Lato-Bold.ttf app/src/main/res/font/lato_bold.ttf
+
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageOps
+
+          res = Path('app/src/main/res')
+          for source, name in (
+              ('/tmp/graphics/splash/splash-light.png', 'splash_emrooz_light.webp'),
+              ('/tmp/graphics/splash/splash-dark.png', 'splash_emrooz_dark.webp'),
+          ):
+              Image.open(source).convert('RGBA').save(res / 'drawable-nodpi' / name, 'WEBP', quality=100, method=6)
+
+          source = Image.open('/tmp/graphics/icons/icon-512.png').convert('RGBA')
+          source = ImageOps.fit(source, (512, 512), method=Image.Resampling.LANCZOS)
+          for directory, size in {
+              'mipmap-mdpi': 48,
+              'mipmap-hdpi': 72,
+              'mipmap-xhdpi': 96,
+              'mipmap-xxhdpi': 144,
+              'mipmap-xxxhdpi': 192,
+          }.items():
+              target = res / directory
+              target.mkdir(parents=True, exist_ok=True)
+              icon = source.resize((size, size), Image.Resampling.LANCZOS).convert('RGB')
+              icon.save(target / 'ic_launcher.png', optimize=True)
+              icon.save(target / 'ic_launcher_round.png', optimize=True)
+          source.save(res / 'drawable-nodpi' / 'ic_launcher_foreground_png.png', optimize=True)
+          source.save('/tmp/out/approved-launcher-512.png', optimize=True)
+          PY
+
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background" />
+              <foreground android:drawable="@drawable/ic_launcher_foreground_png" />
+          </adaptive-icon>
+          EOF
+          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          cat > app/src/main/res/values/colors.xml <<'EOF'
+          <resources><color name="ic_launcher_background">#F7F2EA</color></resources>
+          EOF
+
+          cp "$R/hybrid_v203/AndroidManifest.xml" app/src/main/AndroidManifest.xml
+          sed -i '/android.permission.INTERNET/d; s/android:screenOrientation="landscape"/android:screenOrientation="portrait"/' app/src/main/AndroidManifest.xml
+
+          mkdir -p app/src/main/assets/tts
+          curl --fail --location --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fa_IR-amir-medium.tar.bz2 -o /tmp/piper.tar.bz2
+          tar -xjf /tmp/piper.tar.bz2 -C app/src/main/assets/tts
+          test -s app/src/main/assets/tts/vits-piper-fa_IR-amir-medium/fa_IR-amir-medium.onnx
+          test -s app/src/main/assets/tts/vits-piper-fa_IR-amir-medium/tokens.txt
+          test -d app/src/main/assets/tts/vits-piper-fa_IR-amir-medium/espeak-ng-data
+
+          cp "$R/hybrid_v203/build.gradle.kts" app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/build.gradle.kts')
+          s = p.read_text()
+          s = s.replace('versionCode = 33', 'versionCode = 35')
+          s = s.replace('versionName = "2.0.3"', 'versionName = "2.1.1"')
+          s = s.replace(
+              'abiFilters += listOf("arm64-v8a")',
+              'abiFilters += listOf(providers.gradleProperty("emroozAbi").orElse("arm64-v8a").get())',
+          )
+          p.write_text(s)
+          PY
+
+          mkdir -p app/src/test/java/com/nameemrooz/journal/{speech,writing}
+          cp "$R/hybrid_v203/TranscriptContinuityTest.kt" app/src/test/java/com/nameemrooz/journal/speech/
+          cp "$R/hybrid_v203/TextEditorSafetyTest.kt" app/src/test/java/com/nameemrooz/journal/writing/
+          cp "$R/hybrid_v203/StableDisplayComposerTest.kt" app/src/test/java/com/nameemrooz/journal/writing/
+
+      - name: 2 - UI, privacy, RTL and offline contracts
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          UI=app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt
+          THEME=app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt
+          rg -q '0xFFF7F2EA|0xFF0D1726|0xFFD68149' "$THEME"
+          rg -q 'ذخیره در آرشیو|نامه‌های گذشته|BottomCenter' "$UI"
+          ! rg -qi 'waveform' "$UI"
+          rg -q 'BIOMETRIC_STRONG|FLAG_SECURE|ContentScale.Fit' app/src/main/java/com/nameemrooz/journal/{MainActivity.kt,privacy/BiometricGate.kt}
+          ! rg -q 'DEVICE_CREDENTIAL|Passcode|passcode' app/src/main/java/com/nameemrooz/journal/{MainActivity.kt,privacy/BiometricGate.kt}
+          ! rg -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml
+          test "$(grep -c 'امروز' "$UI")" -le 8
+          rg -q 'modelType = RnntModelSpec.MODEL_TYPE' app/src/main/java/com/nameemrooz/journal/speech/ShenavaRnntRecognizer.kt
+
+      - name: 3 - Approved launcher regression
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/tests/icon/verify_launcher_icons.py" \
+            --reference /tmp/graphics/icons/icon-512.png \
+            --res /tmp/emrooz/app/src/main/res
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Fetch verified Shenava assets
+        working-directory: /tmp/emrooz
+        run: gradle --no-daemon :app:fetchShenavaRnntModel
+
+      - name: 4 - Initialize the real Shenava model on host
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.4/sherpa-onnx-jvm-1.13.4.jar \
+            -o /tmp/sherpa-jvm.jar
+          curl --fail --location --retry 3 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.4/sherpa-onnx-native-lib-linux-x64-1.13.4.jar \
+            -o /tmp/sherpa-native.jar
+          mkdir -p /tmp/rnnt-test-classes
+          javac -cp /tmp/sherpa-jvm.jar:/tmp/sherpa-native.jar \
+            -d /tmp/rnnt-test-classes \
+            app/src/main/java/com/nameemrooz/journal/speech/RnntModelSpec.java \
+            "$GITHUB_WORKSPACE/tests/rnnt/RnntModelStartupTest.java"
+          java -cp /tmp/rnnt-test-classes:/tmp/sherpa-jvm.jar:/tmp/sherpa-native.jar \
+            com.nameemrooz.journal.speech.RnntModelStartupTest \
+            app/src/main/assets/models/shenava_v15_rnnt_int8 | tee /tmp/out/rnnt-host-startup.txt
+
+      - name: 5 - Unit tests, lint and x86 debug APK
+        working-directory: /tmp/emrooz
+        run: |
+          gradle --no-daemon -PemroozAbi=x86_64 \
+            :app:testDebugUnitTest :app:lintRelease :app:assembleDebug
+
+      - name: Create Android 35 emulator
+        run: |
+          set -euo pipefail
+          sudo chmod 666 /dev/kvm || true
+          sdkmanager "system-images;android-35;google_apis;x86_64"
+          echo no | avdmanager create avd --force --name emrooz-ci --package "system-images;android-35;google_apis;x86_64"
+          "$ANDROID_HOME/emulator/emulator" @emrooz-ci \
+            -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect -memory 4096 -partition-size 4096 \
+            > /tmp/out/emulator-console.txt 2>&1 &
+          adb wait-for-device
+          for attempt in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+              break
+            fi
+            sleep 5
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+
+      - name: 6 - Install and survive startup after splash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          adb install -r "$APK"
+          adb logcat -c
+          adb shell am start -W -n com.nameemrooz.journal/.MainActivity --ez qa_bypass_lock true | tee /tmp/out/activity-first-start.txt
+          sleep 25
+          PID="$(adb shell pidof -s com.nameemrooz.journal | tr -d '\r')"
+          test -n "$PID"
+          adb shell dumpsys activity activities | grep -q 'mResumedActivity.*com.nameemrooz.journal'
+          adb exec-out screencap -p > /tmp/out/emulator-home-after-rnnt.png
+          adb logcat -d > /tmp/out/logcat-first-start.txt
+          ! rg -n 'context_size.*metadata|FATAL EXCEPTION.*nameemrooz|Fatal signal.*nameemrooz' /tmp/out/logcat-first-start.txt
+
+      - name: 7 - Background cover and return smoke test
+        run: |
+          set -euo pipefail
+          adb shell input keyevent KEYCODE_HOME
+          sleep 3
+          adb shell am start -W -n com.nameemrooz.journal/.MainActivity --ez qa_bypass_lock true | tee /tmp/out/activity-return.txt
+          sleep 15
+          test -n "$(adb shell pidof -s com.nameemrooz.journal | tr -d '\r')"
+          adb shell dumpsys activity activities | grep -q 'mResumedActivity.*com.nameemrooz.journal'
+          adb exec-out screencap -p > /tmp/out/emulator-return.png
+          adb logcat -d > /tmp/out/logcat-return.txt
+          ! rg -n 'context_size.*metadata|FATAL EXCEPTION.*nameemrooz|Fatal signal.*nameemrooz' /tmp/out/logcat-return.txt
+          adb emu kill || true
+
+      - name: 8 - Build arm64 release APK
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          gradle --no-daemon clean :app:assembleRelease -PemroozAbi=arm64-v8a
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Reuse 2.1.0 signing certificate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${PREVIOUS_SIGNING_ARTIFACT_ID}/zip" \
+            -o /tmp/previous-deliverables.zip
+          mkdir -p /tmp/signing
+          KEY_ENTRY="$(unzip -Z1 /tmp/previous-deliverables.zip | grep 'signing-keystore\.jks$' | head -1)"
+          INFO_ENTRY="$(unzip -Z1 /tmp/previous-deliverables.zip | grep 'signing-info\.txt$' | head -1)"
+          OLD_APK_ENTRY="$(unzip -Z1 /tmp/previous-deliverables.zip | grep '\.apk$' | head -1)"
+          test -n "$KEY_ENTRY" && test -n "$INFO_ENTRY" && test -n "$OLD_APK_ENTRY"
+          unzip -p /tmp/previous-deliverables.zip "$KEY_ENTRY" > /tmp/signing/emrooz.jks
+          unzip -p /tmp/previous-deliverables.zip "$INFO_ENTRY" > /tmp/signing/signing-info.txt
+          unzip -p /tmp/previous-deliverables.zip "$OLD_APK_ENTRY" > /tmp/signing/emrooz-2.1.0.apk
+          chmod 600 /tmp/signing/emrooz.jks /tmp/signing/signing-info.txt
+
+      - name: 9 - Sign, package and offline integrity checks
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          PASS="$(sed -n 's/^keystore_password=//p' /tmp/signing/signing-info.txt | head -1)"
+          ALIAS="$(sed -n 's/^alias=//p' /tmp/signing/signing-info.txt | head -1)"
+          test -n "$PASS" && test -n "$ALIAS"
+          "$BT/zipalign" -f 4 app/build/outputs/apk/release/app-release-unsigned.apk /tmp/aligned.apk
+          "$BT/apksigner" sign \
+            --ks /tmp/signing/emrooz.jks \
+            --ks-pass "pass:$PASS" \
+            --key-pass "pass:$PASS" \
+            --ks-key-alias "$ALIAS" \
+            --out "/tmp/out/$APK_NAME" \
+            /tmp/aligned.apk
+          "$BT/apksigner" verify --verbose --print-certs "/tmp/out/$APK_NAME" > /tmp/out/signature.txt
+          "$BT/aapt" dump badging "/tmp/out/$APK_NAME" > /tmp/out/badging.txt
+          grep -q "package: name='com.nameemrooz.journal' versionCode='35' versionName='2.1.1'" /tmp/out/badging.txt
+          ! "$BT/aapt" dump permissions "/tmp/out/$APK_NAME" | grep -q android.permission.INTERNET
+          unzip -t "/tmp/out/$APK_NAME" > /tmp/out/zip-integrity.txt
+          unzip -Z1 "/tmp/out/$APK_NAME" | grep -q 'assets/models/shenava_v15_rnnt_int8/encoder.int8.onnx'
+          unzip -Z1 "/tmp/out/$APK_NAME" | grep -q 'assets/models/shenava_v15_rnnt_int8/decoder.int8.onnx'
+          unzip -Z1 "/tmp/out/$APK_NAME" | grep -q 'assets/models/shenava_v15_rnnt_int8/joiner.int8.onnx'
+          unzip -Z1 "/tmp/out/$APK_NAME" | grep -q 'assets/models/shenava_v15_rnnt_int8/tokens.txt'
+          unzip -Z1 "/tmp/out/$APK_NAME" | grep -q 'assets/tts/vits-piper-fa_IR-amir-medium/fa_IR-amir-medium.onnx'
+
+      - name: 10 - Upgrade certificate, size and digest checks
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          "$BT/apksigner" verify --print-certs /tmp/signing/emrooz-2.1.0.apk > /tmp/old-cert.txt
+          "$BT/apksigner" verify --print-certs "/tmp/out/$APK_NAME" > /tmp/new-cert.txt
+          OLD_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/old-cert.txt | head -1)"
+          NEW_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/new-cert.txt | head -1)"
+          test -n "$OLD_CERT" && test "$OLD_CERT" = "$NEW_CERT"
+          sha256sum "/tmp/out/$APK_NAME" | tee /tmp/out/apk-sha256.txt
+          stat -c '%s bytes' "/tmp/out/$APK_NAME" | tee /tmp/out/apk-size.txt
+          printf '%s\n' "$NEW_CERT" > /tmp/out/update-signing-cert-sha256.txt
+          cat > /tmp/out/QA-Emrooz-2.1.1.txt <<'EOF'
+          Emrooz 2.1.1 — ten controls passed
+          1. Clean source reconstruction and source checksum
+          2. UI, RTL, privacy, biometric-only, and offline contract
+          3. Approved Emrooz artwork in all 10 legacy launchers plus adaptive launcher
+          4. Real Shenava Koochik v1.5 RNNT initialization as nemo_transducer
+          5. Unit tests, Android lint, and x86 debug build
+          6. Emulator install and process alive after splash + RNNT initialization
+          7. Background cover / return path and second process-survival check
+          8. Clean arm64 release build
+          9. APK signature, ZIP, model assets, TTS asset, version, and no-INTERNET checks
+          10. Same signing certificate as rejected 2.1.0 for in-place upgrade, plus SHA-256 and size
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-2.1.1-verified-hotfix
+          path: /tmp/out/*
+          retention-days: 14
+
+      - name: Publish direct APK release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/release-notes.md <<'EOF'
+          Startup and launcher hotfix for Emrooz.
+
+          - fixes Shenava Koochik v1.5 RNNT startup by using sherpa-onnx `nemo_transducer`
+          - replaces every legacy and adaptive launcher path with the approved Emrooz logo artwork
+          - preserves the approved UI and uses the same signing certificate as 2.1.0 for an in-place update
+          - passed the ten-control QA report included in the workflow artifact
+          EOF
+          gh release create "$RELEASE_TAG" "/tmp/out/$APK_NAME" \
+            --target "$GITHUB_SHA" \
+            --title "Emrooz 2.1.1 — Startup and Icon Hotfix" \
+            --notes-file /tmp/release-notes.md
