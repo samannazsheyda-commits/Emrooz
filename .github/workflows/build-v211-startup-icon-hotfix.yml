@@ -253,8 +253,11 @@ jobs:
         run: |
           set -euo pipefail
           sudo chmod 666 /dev/kvm || true
-          sdkmanager "system-images;android-35;google_apis;x86_64"
-          echo no | avdmanager create avd --force --name emrooz-ci --package "system-images;android-35;google_apis;x86_64"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          AVDMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name avdmanager | sort -V | tail -1)"
+          test -x "$SDKMANAGER" && test -x "$AVDMANAGER"
+          "$SDKMANAGER" "system-images;android-35;google_apis;x86_64"
+          echo no | "$AVDMANAGER" create avd --force --name emrooz-ci --package "system-images;android-35;google_apis;x86_64"
           "$ANDROID_HOME/emulator/emulator" @emrooz-ci \
             -no-window -no-audio -no-boot-anim -no-snapshot \
             -gpu swiftshader_indirect -memory 4096 -partition-size 4096 \
