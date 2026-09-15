@@ -1,0 +1,123 @@
+name: Diagnose Emrooz v2.0.3 Runtime
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/runtime-debug-v203.yml'
+
+jobs:
+  runtime-diagnosis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct RNNT base and overlay v2.0.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          echo '8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz' | sha256sum -c -
+          rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz /tmp/out
+          tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+          ROOT="$GITHUB_WORKSPACE"
+          cd /tmp/emrooz
+          cp "$ROOT/approved_ui/Theme.kt" app/src/main/java/com/nameemrooz/journal/ui/theme/Theme.kt
+          cp "$ROOT/approved_ui/AppViewModel.kt" app/src/main/java/com/nameemrooz/journal/ui/AppViewModel.kt
+          cp "$ROOT/approved_ui/BiometricGate.kt" app/src/main/java/com/nameemrooz/journal/privacy/BiometricGate.kt
+          cp "$ROOT/approved_ui/MainActivity.kt" app/src/main/java/com/nameemrooz/journal/MainActivity.kt
+          cp "$ROOT/hybrid_v203/build.gradle.kts" app/build.gradle.kts
+          cp "$ROOT/hybrid_v203/AndroidManifest.xml" app/src/main/AndroidManifest.xml
+          cp "$ROOT/hybrid_v203/SettingsStore.kt" app/src/main/java/com/nameemrooz/journal/data/SettingsStore.kt
+          cp "$ROOT/hybrid_v203/JalaliDate.kt" app/src/main/java/com/nameemrooz/journal/util/JalaliDate.kt
+          for f in SpeechMode.kt SpeechEngine.kt SystemSpeechErrorPolicy.kt SystemSpeechEngine.kt TranscriptContinuity.kt HybridSpeechController.kt LiveSpeechEngine.kt; do
+            cp "$ROOT/hybrid_v203/$f" "app/src/main/java/com/nameemrooz/journal/speech/$f"
+          done
+          mkdir -p app/src/main/java/com/nameemrooz/journal/writing
+          for f in PunctuationRestorer.kt LexicalSafety.kt TextEditor.kt StableDisplayComposer.kt LocalPunctuationModel.kt; do
+            cp "$ROOT/hybrid_v203/$f" "app/src/main/java/com/nameemrooz/journal/writing/$f"
+          done
+          cat "$ROOT/hybrid_v203/NameEmroozApp.part00" \
+              "$ROOT/hybrid_v203/NameEmroozApp.part01" \
+              "$ROOT/hybrid_v203/NameEmroozApp.part02" \
+              "$ROOT/hybrid_v203/NameEmroozApp.part03" \
+              "$ROOT/hybrid_v203/NameEmroozApp.part04" \
+              > app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt
+          echo '0458d898e9be5d7bdd0010ab579d3d81cfa236a6610da7c257026949de1cba01  app/src/main/java/com/nameemrooz/journal/ui/NameEmroozApp.kt' | sha256sum -c -
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle.kts')
+          s=p.read_text()
+          old='abiFilters += listOf("arm64-v8a")'
+          if old not in s: raise SystemExit('arm64 ABI filter not found')
+          p.write_text(s.replace(old, 'abiFilters += listOf("x86_64")', 1))
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Build x86_64 diagnostic APK
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleDebug
+          test -f app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Launch and capture exit reason
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -u
+            mkdir -p /tmp/out
+            adb install -r /tmp/emrooz/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am force-stop com.nameemrooz.journal
+            adb shell am start -W -n com.nameemrooz.journal/.MainActivity > /tmp/out/activity-start.txt 2>&1
+            START_RC=$?
+            sleep 12
+            adb logcat -d > /tmp/out/runtime-logcat.txt 2>&1 || true
+            adb shell dumpsys activity exit-info com.nameemrooz.journal > /tmp/out/exit-info.txt 2>&1 || true
+            adb shell dumpsys meminfo com.nameemrooz.journal > /tmp/out/meminfo.txt 2>&1 || true
+            PID=$(adb shell pidof com.nameemrooz.journal 2>/dev/null | tr -d '\r' || true)
+            printf '%s\n' "$PID" > /tmp/out/pid.txt
+            grep -E -i 'FATAL EXCEPTION|AndroidRuntime|OutOfMemoryError|am_crash|am_kill|lowmemory|lmkd|Killing.*com\.nameemrooz|com\.nameemrooz\.journal' /tmp/out/runtime-logcat.txt > /tmp/out/runtime-highlights.txt || true
+            cat /tmp/out/activity-start.txt
+            echo "start_rc=$START_RC pid=$PID"
+            cat /tmp/out/exit-info.txt || true
+            cat /tmp/out/runtime-highlights.txt || true
+            test "$START_RC" -eq 0
+            test -n "$PID"
+            ! grep -E 'FATAL EXCEPTION.*|Process: com\.nameemrooz\.journal' /tmp/out/runtime-logcat.txt
+
+      - name: Upload runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v2.0.3-runtime-diagnostics
+          path: |
+            /tmp/out/activity-start.txt
+            /tmp/out/runtime-logcat.txt
+            /tmp/out/runtime-highlights.txt
+            /tmp/out/exit-info.txt
+            /tmp/out/meminfo.txt
+            /tmp/out/pid.txt
+          retention-days: 7
