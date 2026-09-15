@@ -1,8 +1,9 @@
-name: Publish Verified Emrooz APK
+name: Publish Emrooz 2.1.0 Direct APK
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - build/emrooz-final-rnnt-tts-20260914
     paths:
       - '.github/workflows/publish-existing-apk.yml'
   workflow_dispatch:
@@ -14,13 +15,16 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       GH_TOKEN: ${{ github.token }}
-      SOURCE_ARTIFACT_ID: '9700136196'
-      RELEASE_TAG: 'v1.0.2-full-offline'
+      SOURCE_ARTIFACT_ID: '10366086409'
+      RELEASE_TAG: 'v2.1.0-final'
+      APK_NAME: 'Emrooz-2.1.0-Shenava-RNNT-Offline-TTS-arm64.apk'
+      APK_SHA256: '15c3852090083c4b832f810ff50d517dc56894303331c540a6fefee07f0877a8'
+      APK_SIZE: '496937224'
     steps:
-      - name: Download already-verified APK artifact
+      - name: Download verified build artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -29,39 +33,41 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -o /tmp/emrooz-artifact.zip \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip"
-          mkdir artifact
+          mkdir -p artifact
           unzip -q /tmp/emrooz-artifact.zip -d artifact
-          test -f artifact/Emrooz-Final-Full-Offline.apk
-          test -f artifact/Emrooz-Final-Full-Offline.apk.sha256
-          cd artifact
-          sha256sum -c Emrooz-Final-Full-Offline.apk.sha256
-          test "$(stat -c%s Emrooz-Final-Full-Offline.apk)" -gt 550000000
-          ls -lh Emrooz-Final-Full-Offline.apk
+          test -f "artifact/$APK_NAME"
+          test "$(stat -c%s "artifact/$APK_NAME")" = "$APK_SIZE"
+          printf '%s  %s\n' "$APK_SHA256" "artifact/$APK_NAME" | sha256sum -c -
 
-      - name: Create or update public release
+      - name: Publish public GitHub Release
         shell: bash
         run: |
           set -euo pipefail
+          assets=("artifact/$APK_NAME")
+          test -f artifact/QA-Emrooz-2.1.0.txt && assets+=("artifact/QA-Emrooz-2.1.0.txt")
+          test -f artifact/apk-sha256.txt && assets+=("artifact/apk-sha256.txt")
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" artifact/Emrooz-Final-Full-Offline.apk artifact/Emrooz-Final-Full-Offline.apk.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG" artifact/Emrooz-Final-Full-Offline.apk artifact/Emrooz-Final-Full-Offline.apk.sha256 \
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "Emrooz v1.0.2 Full Offline" \
-              --notes "Verified full-offline Android APK with bundled Persian speech model."
+              --title "Emrooz 2.1.0 — Shenava RNNT Offline" \
+              --notes "Fresh verified Android build. Bundled Shenava v1.5 RNNT INT8, sherpa-onnx runtime and offline Persian TTS. No previous APK was used as the final baseline."
           fi
 
-      - name: Verify release asset is published
+      - name: Verify direct APK release asset
         shell: bash
         run: |
           set -euo pipefail
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,url,tagName | tee /tmp/release.json
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets,url > /tmp/release.json
           python3 - <<'PY'
-          import json
-          data=json.load(open('/tmp/release.json'))
-          assets={a['name']:a for a in data['assets']}
-          assert 'Emrooz-Final-Full-Offline.apk' in assets
-          assert assets['Emrooz-Final-Full-Offline.apk']['size'] > 550_000_000
-          print(assets['Emrooz-Final-Full-Offline.apk']['url'])
+          import json, os
+          data = json.load(open('/tmp/release.json'))
+          expected_name = os.environ['APK_NAME']
+          expected_size = int(os.environ['APK_SIZE'])
+          assets = {asset['name']: asset for asset in data['assets']}
+          assert expected_name in assets, assets.keys()
+          assert assets[expected_name]['size'] == expected_size, assets[expected_name]
+          print(assets[expected_name]['url'])
           PY
