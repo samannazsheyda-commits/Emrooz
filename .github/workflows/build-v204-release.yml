@@ -45,7 +45,7 @@ jobs:
           cp "$ROOT/approved_ui/Theme.kt" "$MAIN/ui/theme/Theme.kt"
           cp "$ROOT/approved_ui/AppViewModel.kt" "$MAIN/ui/AppViewModel.kt"
           cp "$ROOT/approved_ui/BiometricGate.kt" "$MAIN/privacy/BiometricGate.kt"
-          cp "$ROOT/approved_ui/MainActivity.kt" "$MAIN/../MainActivity.kt"
+          cp "$ROOT/approved_ui/MainActivity.kt" "$MAIN/MainActivity.kt"
           cp "$ROOT/hybrid_v204/build.gradle.kts" app/build.gradle.kts
           cp "$ROOT/hybrid_v203/AndroidManifest.xml" app/src/main/AndroidManifest.xml
           cp "$ROOT/hybrid_v204/SettingsStore.kt" "$MAIN/data/SettingsStore.kt"
@@ -64,12 +64,13 @@ jobs:
             cp "$ROOT/hybrid_v204/$f" "$MAIN/writing/$f"
           done
 
-          cat "$ROOT/hybrid_v204/NameEmroozApp.part00" \
-              "$ROOT/hybrid_v203/NameEmroozApp.part01" \
-              "$ROOT/hybrid_v203/NameEmroozApp.part02" \
-              "$ROOT/hybrid_v204/NameEmroozApp.part03" \
-              "$ROOT/hybrid_v203/NameEmroozApp.part04" \
-              > "$MAIN/ui/NameEmroozApp.kt"
+          {
+            cat "$ROOT/hybrid_v204/NameEmroozApp.part00"; printf '\n'
+            cat "$ROOT/hybrid_v203/NameEmroozApp.part01"; printf '\n'
+            cat "$ROOT/hybrid_v203/NameEmroozApp.part02"; printf '\n'
+            cat "$ROOT/hybrid_v204/NameEmroozApp.part03"; printf '\n'
+            cat "$ROOT/hybrid_v203/NameEmroozApp.part04"; printf '\n'
+          } > "$MAIN/ui/NameEmroozApp.kt"
 
           mkdir -p app/src/test/java/com/nameemrooz/journal/speech app/src/test/java/com/nameemrooz/journal/writing
           cp "$ROOT/hybrid_v203/SpeechModePolicyTest.kt" app/src/test/java/com/nameemrooz/journal/speech/
