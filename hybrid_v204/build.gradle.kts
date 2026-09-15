@@ -160,7 +160,9 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("io.github.eix128:sentencepiece4j:1.0.2")
 
-    implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta4") {
+        exclude(group = "com.google.android.datatransport", module = "transport-backend-cct")
+    }
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
