@@ -1,0 +1,51 @@
+name: TDD v2.0.4 Task1 RED
+
+on:
+  push:
+    branches: [work/gemini-nano-editor-v204-red1]
+    paths:
+      - 'hybrid_v204/**'
+      - '.github/workflows/tdd-v204-task1-red.yml'
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Reconstruct Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          echo '8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz' | sha256sum -c -
+          rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz
+          tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+      - name: Install RED test only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/emrooz/app/src/test/java/com/nameemrooz/journal/writing
+          cp hybrid_v204/WritingEditSafetyTest.kt /tmp/emrooz/app/src/test/java/com/nameemrooz/journal/writing/
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/emrooz/app/build.gradle.kts')
+          s=p.read_text()
+          s=s.replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel) }','')
+          s=s.replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }','')
+          p.write_text(s)
+          PY
+      - name: Run expected-failing test
+        working-directory: /tmp/emrooz
+        run: gradle --no-daemon :app:testDebugUnitTest --tests '*WritingEditSafetyTest*'
