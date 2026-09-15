@@ -21,7 +21,7 @@ if rg -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml; then
   echo 'ERROR: INTERNET permission present in source manifest' >&2
   exit 1
 fi
-if rg -q 'اصلاح کن' app/src/main/java; then
+if rg -n 'اصلاح کن' app/src/main/java; then
   echo 'ERROR: removed voice editing command returned' >&2
   exit 1
 fi
