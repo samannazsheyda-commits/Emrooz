@@ -32,6 +32,7 @@ jobs:
           echo '8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz' | sha256sum -c -
           rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz
           tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+          cp hybrid_v203/build.gradle.kts /tmp/emrooz/app/build.gradle.kts
       - name: Install RED test only
         shell: bash
         run: |
@@ -42,7 +43,6 @@ jobs:
           from pathlib import Path
           p=Path('/tmp/emrooz/app/build.gradle.kts')
           s=p.read_text()
-          s=s.replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel) }','')
           s=s.replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }','')
           p.write_text(s)
           PY
