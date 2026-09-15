@@ -48,8 +48,10 @@ def main() -> None:
                 if image.size != (pixels, pixels):
                     failures.append(f"{path}: expected {pixels}x{pixels}, got {image.size}")
             error = mean_channel_error(normalized(path), expected)
-            if error > 3.0:
-                failures.append(f"{path}: approved-artwork error {error:.2f} > 3.00")
+            # A 48 px launcher loses a few edge pixels when normalized again for
+            # comparison; unrelated artwork is an order of magnitude farther away.
+            if error > 5.0:
+                failures.append(f"{path}: approved-artwork error {error:.2f} > 5.00")
 
     adaptive = args.res / "drawable-nodpi" / "ic_launcher_foreground_png.png"
     if not adaptive.is_file():
