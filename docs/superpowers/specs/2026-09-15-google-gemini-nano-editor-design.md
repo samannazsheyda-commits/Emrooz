@@ -1,7 +1,7 @@
 # Emrooz — On-device Google/Gemini Nano Editor Design
 
 Date: 2026-09-15
-Status: Approved design, implementation not started
+Status: Design approved in chat; awaiting written-spec review before implementation planning
 
 ## Goal
 
@@ -12,6 +12,7 @@ The app must remain fully usable when the Google on-device model is unavailable.
 ## Locked product constraints
 
 - Default app behavior remains privacy-first and offline-capable.
+- Enhanced Google on-device editing is OFF by default until the user enables it.
 - Shenava v1.5 RNNT stays available as the guaranteed offline speech engine.
 - Android/System speech remains an optional higher-accuracy speech path.
 - No audio is persisted to disk.
@@ -43,7 +44,7 @@ Coordinator:
 
 `WritingEnhancementCoordinator`
 
-The coordinator selects Google on-device enhancement only when the runtime reports the feature/model as available. Otherwise it uses the local path immediately.
+The coordinator selects Google on-device enhancement only when the user enabled it and the runtime reports the feature/model as available. Otherwise it uses the local path immediately.
 
 ## Data flow
 
@@ -125,14 +126,14 @@ No user text may be lost while switching providers.
 ## Privacy contract
 
 - Gemini Nano receives text only after speech recognition; it never receives the app's audio buffer.
-- Inference must be on-device.
+- Inference must be on-device; any API path that sends the diary text to a cloud service is out of scope and must not be used as a silent fallback.
 - The existing no-audio-file rule remains unchanged.
 - The current `android.permission.INTERNET` absence is treated as a hard privacy requirement. If the chosen Google on-device SDK unexpectedly requires an app-level INTERNET permission for inference, the Google editor integration must not be enabled until that conflict is explicitly reviewed. The feature must not silently weaken the privacy contract.
 - If model provisioning is managed by Android/AICore outside the app, the UI may explain that device services can download the model separately.
 
 ## UI
 
-Add one setting under writing/transcription preferences:
+Add one setting under writing/transcription preferences, default OFF:
 
 Persian:
 - `ویراستاری دقیق‌تر با مدل روی دستگاه`
@@ -169,6 +170,7 @@ Every enhancement step is fail-open toward preserving user text:
 Unit tests:
 
 - provider-selection policy,
+- setting default OFF,
 - unsupported-device fallback,
 - timeout/error fallback,
 - no transcript loss during fallback,
@@ -206,11 +208,12 @@ Because Gemini Nano availability is hardware/service dependent, CI must not requ
 The feature is complete only when:
 
 1. Emrooz still works fully offline without Google on-device support.
-2. On a supported device, enabling enhanced editing can improve spelling/half-space/punctuation without changing meaning.
-3. Unsafe edits are deterministically rejected.
-4. Any Google model failure leaves the existing text intact.
-5. No audio is persisted.
-6. The app privacy contract is not weakened silently.
-7. Existing UI, fonts, archive, biometric, and speech-engine behavior remain intact.
-8. Unit tests, lint, release build, APK integrity checks, and runtime smoke pass.
-9. A supported real device verifies at least one successful on-device Gemini Nano enhancement before the feature is labeled production-verified.
+2. Enhanced Google editing is opt-in and defaults OFF.
+3. On a supported device, enabling enhanced editing can improve spelling/half-space/punctuation without changing meaning.
+4. Unsafe edits are deterministically rejected.
+5. Any Google model failure leaves the existing text intact.
+6. No audio is persisted.
+7. The app privacy contract is not weakened silently and no cloud editing fallback is introduced.
+8. Existing UI, fonts, archive, biometric, and speech-engine behavior remain intact.
+9. Unit tests, lint, release build, APK integrity checks, and runtime smoke pass.
+10. A supported real device verifies at least one successful on-device Gemini Nano enhancement before the feature is labeled production-verified.
