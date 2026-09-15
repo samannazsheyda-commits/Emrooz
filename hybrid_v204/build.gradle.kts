@@ -32,7 +32,6 @@ android {
     buildFeatures { compose = true; buildConfig = true }
 
     androidResources {
-        // Keep the quantized Shenava RNNT model uncompressed for direct asset access.
         noCompress += "onnx"
     }
 
@@ -47,26 +46,10 @@ val modelDir = layout.projectDirectory.dir("src/main/assets/models/shenava_v15_r
 
 data class ModelAsset(val name: String, val url: String, val sha256: String)
 val modelAssets = listOf(
-    ModelAsset(
-        "encoder.int8.onnx",
-        "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/encoder.int8.onnx?download=true",
-        "b9d975c1af77002f83897017e3adaaa6510148c6ba332df92b8d281369f2fdd3"
-    ),
-    ModelAsset(
-        "decoder.int8.onnx",
-        "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/decoder.int8.onnx?download=true",
-        "0adaad326a536dfbb30c67287e909b4e6f0775fccb8c3ca47270890364824947"
-    ),
-    ModelAsset(
-        "joiner.int8.onnx",
-        "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/joiner.int8.onnx?download=true",
-        "e441ed265c961ff4a2436aa8bc36638e65849445e7a1f65cf263f0c310593dde"
-    ),
-    ModelAsset(
-        "tokens.txt",
-        "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/tokens.txt?download=true",
-        "8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954"
-    )
+    ModelAsset("encoder.int8.onnx", "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/encoder.int8.onnx?download=true", "b9d975c1af77002f83897017e3adaaa6510148c6ba332df92b8d281369f2fdd3"),
+    ModelAsset("decoder.int8.onnx", "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/decoder.int8.onnx?download=true", "0adaad326a536dfbb30c67287e909b4e6f0775fccb8c3ca47270890364824947"),
+    ModelAsset("joiner.int8.onnx", "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/joiner.int8.onnx?download=true", "e441ed265c961ff4a2436aa8bc36638e65849445e7a1f65cf263f0c310593dde"),
+    ModelAsset("tokens.txt", "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/tokens.txt?download=true", "8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954")
 )
 
 fun File.sha256(): String {
@@ -162,7 +145,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.room:room-ktx:2.8.5")
@@ -172,14 +155,11 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
-    // sherpa-onnx Kotlin/Android runtime. Audio samples stay in RAM.
     implementation("com.github.k2-fsa:sherpa-onnx:v1.13.4")
 
-    // Local writing model runtime. ORT 1.27 matches sherpa-onnx v1.13.4 native runtime.
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("io.github.eix128:sentencepiece4j:1.0.2")
 
-    // Optional on-device Google Gemini Nano editor. No cloud Gemini API is used.
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
