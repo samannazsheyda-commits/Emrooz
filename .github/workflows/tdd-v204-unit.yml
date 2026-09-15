@@ -32,7 +32,7 @@ jobs:
           echo '8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz' | sha256sum -c -
           rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz
           tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
-          cp hybrid_v203/build.gradle.kts /tmp/emrooz/app/build.gradle.kts
+          if [ -f hybrid_v204/build.gradle.kts ]; then cp hybrid_v204/build.gradle.kts /tmp/emrooz/app/build.gradle.kts; else cp hybrid_v203/build.gradle.kts /tmp/emrooz/app/build.gradle.kts; fi
       - name: Apply writing test overlay
         shell: bash
         run: |
@@ -42,9 +42,12 @@ jobs:
           mkdir -p "$MAIN" "$TEST"
           for f in PunctuationRestorer.kt LexicalSafety.kt TextEditor.kt; do cp "hybrid_v203/$f" "$MAIN/$f"; done
           cp hybrid_v203/TextEditorSafetyTest.kt "$TEST/TextEditorSafetyTest.kt"
-          cp hybrid_v204/WritingEnhancer.kt "$MAIN/WritingEnhancer.kt"
-          cp hybrid_v204/WritingEditSafety.kt "$MAIN/WritingEditSafety.kt"
-          cp hybrid_v204/WritingEditSafetyTest.kt "$TEST/WritingEditSafetyTest.kt"
+          for f in WritingEnhancer.kt WritingEditSafety.kt NanoPromptClient.kt MlKitNanoPromptClient.kt GeminiNanoWritingEnhancer.kt LocalWritingEnhancer.kt WritingEnhancementCoordinator.kt; do
+            [ ! -f "hybrid_v204/$f" ] || cp "hybrid_v204/$f" "$MAIN/$f"
+          done
+          for f in WritingEditSafetyTest.kt GeminiNanoWritingEnhancerTest.kt WritingEnhancementCoordinatorTest.kt; do
+            [ ! -f "hybrid_v204/$f" ] || cp "hybrid_v204/$f" "$TEST/$f"
+          done
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/emrooz/app/build.gradle.kts')
@@ -52,6 +55,6 @@ jobs:
           s=s.replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }','')
           p.write_text(s)
           PY
-      - name: Run writing safety tests
+      - name: Run writing unit tests
         working-directory: /tmp/emrooz
-        run: gradle --no-daemon :app:testDebugUnitTest --tests '*WritingEditSafetyTest*' --tests '*TextEditorSafetyTest*'
+        run: gradle --no-daemon :app:testDebugUnitTest --tests '*WritingEditSafetyTest*' --tests '*TextEditorSafetyTest*' --tests '*GeminiNanoWritingEnhancerTest*' --tests '*WritingEnhancementCoordinatorTest*'
