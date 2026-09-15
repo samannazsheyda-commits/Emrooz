@@ -269,7 +269,18 @@ jobs:
           test -x "$ADB"
           export PATH="$(dirname "$ADB"):$SDK_ROOT/emulator:$PATH"
           "$ADB" start-server
-          echo no | "$AVDMANAGER" create avd --force --name emrooz-ci --package "system-images;android-35;google_apis;x86_64"
+          AVD_ROOT=/tmp/emrooz-avd
+          mkdir -p "$AVD_ROOT"
+          export ANDROID_SDK_HOME="$AVD_ROOT"
+          export ANDROID_AVD_HOME="$AVD_ROOT/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          printf 'no\n' | "$AVDMANAGER" create avd --force \
+            --name emrooz-ci \
+            --path "$ANDROID_AVD_HOME/emrooz-ci.avd" \
+            --device pixel_2 \
+            --package "system-images;android-35;google_apis;x86_64"
+          "$AVDMANAGER" list avd
+          test -f "$ANDROID_AVD_HOME/emrooz-ci.ini"
           EMULATOR_LOG=/tmp/out/emulator-console.txt
           "$SDK_ROOT/emulator/emulator" @emrooz-ci \
             -no-window -no-audio -no-boot-anim -no-snapshot \
