@@ -1,0 +1,323 @@
+name: Build Emrooz v2.0.4 Verified Release
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-v204-release.yml'
+
+jobs:
+  build-test-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact RNNT base
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          echo '8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz' | sha256sum -c -
+          rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz
+          tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+          test -f /tmp/emrooz/app/build.gradle.kts
+
+      - name: Install QA tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep python3-pil
+
+      - name: Apply approved UI hybrid speech and v2.0.4 editor overlay
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          MAIN=app/src/main/java/com/nameemrooz/journal
+
+          cp "$ROOT/hybrid_v204/root-build.gradle.kts" build.gradle.kts
+          cp "$ROOT/approved_ui/Theme.kt" "$MAIN/ui/theme/Theme.kt"
+          cp "$ROOT/approved_ui/AppViewModel.kt" "$MAIN/ui/AppViewModel.kt"
+          cp "$ROOT/approved_ui/BiometricGate.kt" "$MAIN/privacy/BiometricGate.kt"
+          cp "$ROOT/approved_ui/MainActivity.kt" "$MAIN/../MainActivity.kt"
+          cp "$ROOT/hybrid_v204/build.gradle.kts" app/build.gradle.kts
+          cp "$ROOT/hybrid_v203/AndroidManifest.xml" app/src/main/AndroidManifest.xml
+          cp "$ROOT/hybrid_v204/SettingsStore.kt" "$MAIN/data/SettingsStore.kt"
+          cp "$ROOT/hybrid_v203/JalaliDate.kt" "$MAIN/util/JalaliDate.kt"
+
+          for f in SpeechMode.kt SpeechEngine.kt SystemSpeechErrorPolicy.kt SystemSpeechEngine.kt TranscriptContinuity.kt LiveSpeechEngine.kt; do
+            cp "$ROOT/hybrid_v203/$f" "$MAIN/speech/$f"
+          done
+          cp "$ROOT/hybrid_v204/HybridSpeechController.kt" "$MAIN/speech/HybridSpeechController.kt"
+
+          mkdir -p "$MAIN/writing"
+          for f in PunctuationRestorer.kt LexicalSafety.kt TextEditor.kt StableDisplayComposer.kt LocalPunctuationModel.kt; do
+            cp "$ROOT/hybrid_v203/$f" "$MAIN/writing/$f"
+          done
+          for f in WritingEnhancer.kt WritingEditSafety.kt NanoPromptClient.kt MlKitNanoPromptClient.kt GeminiNanoWritingEnhancer.kt LocalWritingEnhancer.kt WritingEnhancementCoordinator.kt; do
+            cp "$ROOT/hybrid_v204/$f" "$MAIN/writing/$f"
+          done
+
+          cat "$ROOT/hybrid_v204/NameEmroozApp.part00" \
+              "$ROOT/hybrid_v203/NameEmroozApp.part01" \
+              "$ROOT/hybrid_v203/NameEmroozApp.part02" \
+              "$ROOT/hybrid_v204/NameEmroozApp.part03" \
+              "$ROOT/hybrid_v203/NameEmroozApp.part04" \
+              > "$MAIN/ui/NameEmroozApp.kt"
+
+          mkdir -p app/src/test/java/com/nameemrooz/journal/speech app/src/test/java/com/nameemrooz/journal/writing
+          cp "$ROOT/hybrid_v203/SpeechModePolicyTest.kt" app/src/test/java/com/nameemrooz/journal/speech/
+          cp "$ROOT/hybrid_v203/TranscriptContinuityTest.kt" app/src/test/java/com/nameemrooz/journal/speech/
+          cp "$ROOT/hybrid_v203/TextEditorSafetyTest.kt" app/src/test/java/com/nameemrooz/journal/writing/
+          cp "$ROOT/hybrid_v203/StableDisplayComposerTest.kt" app/src/test/java/com/nameemrooz/journal/writing/
+          for f in WritingEditSafetyTest.kt GeminiNanoWritingEnhancerTest.kt WritingEnhancementCoordinatorTest.kt; do
+            cp "$ROOT/hybrid_v204/$f" app/src/test/java/com/nameemrooz/journal/writing/
+          done
+
+          cp "$ROOT/approved_ui/verify_approved_ui_contract.sh" tools/verify_approved_ui_contract.sh
+          cp "$ROOT/hybrid_v203/verify_hybrid_speech_contract.sh" tools/verify_hybrid_speech_contract.sh
+          cp "$ROOT/hybrid_v204/verify_google_editor_contract.sh" tools/verify_google_editor_contract.sh
+          chmod +x tools/verify_approved_ui_contract.sh tools/verify_hybrid_speech_contract.sh tools/verify_google_editor_contract.sh
+
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          d = Path('app/src/main/res/drawable-nodpi')
+          light = d/'splash_emrooz_light.webp'
+          if not light.exists():
+              light = d/'splash_emrooz_light.png'
+          if not light.exists():
+              raise SystemExit('approved light splash missing')
+          src = Image.open(light).convert('RGBA')
+          bg = src.getpixel((0,0))
+          mask = Image.new('L', src.size, 0)
+          sp = src.load(); mp = mask.load()
+          br,bg0,bb,_ = bg
+          for y in range(src.height):
+              for x in range(src.width):
+                  r,g,b,a = sp[x,y]
+                  if a and (abs(r-br)>15 or abs(g-bg0)>15 or abs(b-bb)>15):
+                      mp[x,y] = 255
+          bbox = mask.getbbox()
+          if not bbox:
+              raise SystemExit('could not locate approved logo on splash')
+          fg = src.crop(bbox)
+
+          cream=(247,242,234,255)
+          for density,size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
+              canvas=Image.new('RGBA',(256,256),cream)
+              ref=fg.copy(); ref.thumbnail((178,220),Image.Resampling.LANCZOS)
+              canvas.alpha_composite(ref,((256-ref.width)//2,(256-ref.height)//2))
+              out=canvas.resize((size,size),Image.Resampling.LANCZOS)
+              p=Path(f'app/src/main/res/mipmap-{density}'); p.mkdir(parents=True,exist_ok=True)
+              out.convert('RGB').save(p/'ic_launcher.png')
+              out.convert('RGB').save(p/'ic_launcher_round.png')
+
+          transparent = fg.copy()
+          px=transparent.load()
+          for y in range(transparent.height):
+              for x in range(transparent.width):
+                  r,g,b,a=px[x,y]
+                  if abs(r-br)<18 and abs(g-bg0)<18 and abs(b-bb)<18:
+                      px[x,y]=(r,g,b,0)
+          box=transparent.getbbox()
+          if box: transparent=transparent.crop(box)
+          transparent.thumbnail((230,320),Image.Resampling.LANCZOS)
+          canvas=Image.new('RGBA',(432,432),(0,0,0,0))
+          canvas.alpha_composite(transparent,((432-transparent.width)//2,(432-transparent.height)//2))
+          canvas.save(d/'ic_launcher_foreground_png.png')
+          print('approved splash bbox:', bbox)
+          PY
+
+          mkdir -p app/src/main/res/mipmap-anydpi-v26 app/src/main/res/values
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background" />
+              <foreground android:drawable="@drawable/ic_launcher_foreground_png" />
+          </adaptive-icon>
+          EOF
+          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          cat > app/src/main/res/values/colors.xml <<'EOF'
+          <resources><color name="ic_launcher_background">#F7F2EA</color></resources>
+          EOF
+          cat > app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="Theme.NameEmrooz" parent="android:style/Theme.Material.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowLightStatusBar">true</item>
+                  <item name="android:navigationBarColor">#F7F2EA</item>
+                  <item name="android:statusBarColor">#F7F2EA</item>
+                  <item name="android:windowBackground">#F7F2EA</item>
+              </style>
+          </resources>
+          EOF
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Verify source contracts
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          bash tools/verify_approved_ui_contract.sh
+          bash tools/verify_hybrid_speech_contract.sh
+          bash tools/verify_google_editor_contract.sh
+          bash tools/test_shenava_rnnt_contract.sh
+          bash tools/verify_live_engine_contract.sh
+          ! grep -R -Eqi 'FileOutputStream|AudioRecord.*write|\.wav|\.pcm|setOutputFile' app/src/main/java/com/nameemrooz/journal/speech
+
+      - name: Unit tests lint and release build
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          gradle --no-daemon clean :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+
+      - name: Verify merged release manifest privacy
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          if grep -R "android.permission.INTERNET" app/build/intermediates/merged_manifests app/build/intermediates/merged_manifest 2>/dev/null; then
+            echo 'ERROR: INTERNET permission appeared in merged release manifest'
+            exit 1
+          fi
+          echo 'Merged release manifest privacy: PASS'
+
+      - name: Sign release APK
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$UNSIGNED"
+          mkdir -p /tmp/out
+          keytool -genkeypair -noprompt -keystore /tmp/emrooz-v204.jks -storepass emroozrelease -keypass emroozrelease -alias emrooz -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Emrooz,O=Emrooz,C=DE'
+          "$BT/zipalign" -f 4 "$UNSIGNED" /tmp/out/aligned.apk
+          "$BT/apksigner" sign --ks /tmp/emrooz-v204.jks --ks-pass pass:emroozrelease --key-pass pass:emroozrelease --out /tmp/out/Emrooz-v2.0.4-Nano-Editor-arm64.apk /tmp/out/aligned.apk
+          rm -f /tmp/out/aligned.apk
+
+      - name: Verify release APK
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          APK=/tmp/out/Emrooz-v2.0.4-Nano-Editor-arm64.apk
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          "$BT/zipalign" -c -v 4 "$APK" >/tmp/out/zipalign.txt
+          "$BT/apksigner" verify --verbose --print-certs "$APK" >/tmp/out/signature.txt
+          "$BT/aapt" dump badging "$APK" >/tmp/out/badging.txt
+          "$BT/aapt" dump permissions "$APK" >/tmp/out/permissions.txt
+          unzip -t "$APK" >/tmp/out/ziptest.txt
+          grep -q "package: name='com.nameemrooz.journal' versionCode='34' versionName='2.0.4'" /tmp/out/badging.txt
+          grep -q "sdkVersion:'26'" /tmp/out/badging.txt
+          grep -q "targetSdkVersion:'35'" /tmp/out/badging.txt
+          ! grep -q 'android.permission.INTERNET' /tmp/out/permissions.txt
+          test "$(unzip -Z1 "$APK" | grep '^lib/' | cut -d/ -f2 | sort -u | tr '\n' ' ')" = 'arm64-v8a '
+          unzip -p "$APK" assets/models/shenava_v15_rnnt_int8/encoder.int8.onnx >/tmp/encoder.onnx
+          unzip -p "$APK" assets/models/shenava_v15_rnnt_int8/decoder.int8.onnx >/tmp/decoder.onnx
+          unzip -p "$APK" assets/models/shenava_v15_rnnt_int8/joiner.int8.onnx >/tmp/joiner.onnx
+          unzip -p "$APK" assets/models/shenava_v15_rnnt_int8/tokens.txt >/tmp/tokens.txt
+          echo 'b9d975c1af77002f83897017e3adaaa6510148c6ba332df92b8d281369f2fdd3  /tmp/encoder.onnx' | sha256sum -c -
+          echo '0adaad326a536dfbb30c67287e909b4e6f0775fccb8c3ca47270890364824947  /tmp/decoder.onnx' | sha256sum -c -
+          echo 'e441ed265c961ff4a2436aa8bc36638e65849445e7a1f65cf263f0c310593dde  /tmp/joiner.onnx' | sha256sum -c -
+          echo '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954  /tmp/tokens.txt' | sha256sum -c -
+          unzip -p "$APK" assets/models/punctuation47/punct_cap_seg_47lang.onnx >/tmp/punctuation.onnx
+          echo '640d91c06b7cc5b3e065c12a7097188378aad3bc11568ff1d72c4c0a2acb0df4  /tmp/punctuation.onnx' | sha256sum -c -
+          sha256sum "$APK" | tee /tmp/out/apk-sha256.txt
+          stat -c '%s bytes' "$APK" | tee /tmp/out/apk-size.txt
+
+      - name: Build x86_64 debug for runtime smoke
+        shell: bash
+        working-directory: /tmp/emrooz
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle.kts')
+          s=p.read_text()
+          old='abiFilters += listOf("arm64-v8a")'
+          if old not in s: raise SystemExit('arm64 ABI filter not found')
+          p.write_text(s.replace(old, 'abiFilters += listOf("x86_64")', 1))
+          PY
+          gradle --no-daemon :app:assembleDebug
+          test -f app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Android launch smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -eu
+            adb install -r /tmp/emrooz/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am force-stop com.nameemrooz.journal
+            adb shell am start -W -n com.nameemrooz.journal/.MainActivity | tee /tmp/out/activity-start.txt
+            sleep 20
+            adb logcat -d > /tmp/out/runtime-logcat.txt
+            adb shell dumpsys activity exit-info com.nameemrooz.journal > /tmp/out/exit-info.txt || true
+            adb shell pidof com.nameemrooz.journal | tr -d '\r' > /tmp/out/pid.txt || true
+            test -s /tmp/out/pid.txt
+            ! grep -E 'FATAL EXCEPTION|Process: com\.nameemrooz\.journal.*has died' /tmp/out/runtime-logcat.txt
+            echo "runtime process=$(cat /tmp/out/pid.txt)" | tee /tmp/out/runtime-smoke.txt
+
+      - name: Write QA report
+        if: success()
+        shell: bash
+        run: |
+          cat > /tmp/out/QA-v2.0.4.txt <<'EOF'
+          Emrooz v2.0.4 QA PASS
+          - Google ML Kit Prompt API beta4 integration compiled
+          - Gemini Nano editing is opt-in and defaults OFF
+          - Unsafe semantic/number/emphasis changes are rejected by WritingEditSafety
+          - Local editor remains the immediate fallback for unavailable/failed Nano
+          - transport-backend-cct excluded; no INTERNET permission in source, merged manifest, or APK
+          - Shenava RNNT model present and hashes verified
+          - Local punctuation model hash verified
+          - Approved Abar/Lato UI contract passed
+          - Removed voice-edit command remains absent
+          - Release unit tests/lint/build/signature/integrity passed
+          - Android API 35 emulator launch remained alive for 20 seconds without fatal exception
+          - Gemini Nano integration compiled and fallback-verified; successful Nano inference still requires supported-device validation
+          EOF
+
+      - name: Upload verified APK and QA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-v2.0.4-verified-release
+          path: |
+            /tmp/out/Emrooz-v2.0.4-Nano-Editor-arm64.apk
+            /tmp/out/QA-v2.0.4.txt
+            /tmp/out/apk-sha256.txt
+            /tmp/out/apk-size.txt
+            /tmp/out/signature.txt
+            /tmp/out/badging.txt
+            /tmp/out/permissions.txt
+            /tmp/out/activity-start.txt
+            /tmp/out/runtime-smoke.txt
+            /tmp/out/runtime-logcat.txt
+            /tmp/out/exit-info.txt
+            /tmp/out/pid.txt
+          retention-days: 7
