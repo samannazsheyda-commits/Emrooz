@@ -1,0 +1,53 @@
+name: Emrooz Launcher Regression
+
+on:
+  push:
+    paths:
+      - ".github/workflows/icon-regression.yml"
+      - "tests/icon/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-launcher:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      APPROVED_ICON_URL: "https://oaisdmntprnortheu.blob.core.windows.net/files/00000000-4b88-81f4-9b2f-87ba8c36305e/raw?se=2026-09-15T14%3A14%3A09Z&sp=r&sv=2026-02-06&sr=b&scid=01a0a529-a5b6-723f-b6e7-4abe2c6e5283&skoid=ba81670d-b682-4d2d-9682-ac0ffdfb3fa1&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-15T07%3A50%3A33Z&ske=2026-09-16T07%3A50%3A33Z&sks=b&skv=2026-02-06&sig=VjluRbC1S/kOJZzPq6ojpAzHUo4W/m/FmlgwqeppCG0%3D"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct rejected launcher resources
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do p=$(printf '%03d' "$i"); cat "payload/v201.part$p" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do p=$(printf '%03d' "$i"); cat "payload/v201.part$p" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          mkdir -p /tmp/emrooz
+          tar --no-same-owner -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+
+      - name: Download approved Emrooz icon
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "$APPROVED_ICON_URL" -o /tmp/approved-emrooz-icon.png
+          file /tmp/approved-emrooz-icon.png
+
+      - name: Verify every launcher path
+        run: |
+          python3 -m pip install --quiet Pillow
+          python3 tests/icon/verify_launcher_icons.py \
+            --reference /tmp/approved-emrooz-icon.png \
+            --res /tmp/emrooz/app/src/main/res
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: approved-icon-and-rejected-launchers
+          path: |
+            /tmp/approved-emrooz-icon.png
+            /tmp/emrooz/app/src/main/res/mipmap-*/ic_launcher*.png
+          retention-days: 2
