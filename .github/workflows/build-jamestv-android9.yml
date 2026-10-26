@@ -29,6 +29,28 @@ jobs:
       - name: Compile, dex, sign debug APK
         working-directory: james_tv
         run: gradle --no-daemon --stacktrace assembleDebug
+      - name: Allow KVM access
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Android 9 emulator launch test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 28
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            adb install -r james_tv/app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.personal.jamestv9/.MainActivity
+            sleep 10
+            echo "Process status:"
+            adb shell pidof com.personal.jamestv9
+            echo "Foreground activity:"
+            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|com.personal.jamestv9' | head -30
+            echo "Java crash log:"
+            adb logcat -d -s AndroidRuntime:E | tail -100
       - uses: actions/upload-artifact@v4
         with:
           name: JamesTV-Android9-installable-APK
