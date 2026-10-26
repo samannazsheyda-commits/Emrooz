@@ -222,7 +222,7 @@ public final class MainActivity extends Activity {
         }
     }
     private void installExitControl(){
-        exitControl=action("⏻  خروج از برنامه",this::confirmExit,false);
+        exitControl=action("خروج از برنامه",this::confirmExit,false);
         exitControl.setTextSize(13);
         exitControl.setContentDescription("خروج از برنامه");
         exitControl.setPadding(dp(15),dp(7),dp(15),dp(7));
