@@ -1,9 +1,9 @@
-name: Build James TV Android 9 APK
+name: Build James Cinema TV Android 9 APK
 on:
   workflow_dispatch:
   push:
     branches:
-      - work/jamestv-android9-build
+      - work/jamestv-cinema-ui
     paths:
       - 'james_tv/**'
       - '.github/workflows/build-jamestv-android9.yml'
@@ -26,6 +26,10 @@ jobs:
         run: |
           SDK_MANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -name sdkmanager -type f | head -1)"
           "$SDK_MANAGER" 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Check catalog scanner Javascript syntax
+        run: |
+          node --check james_tv/app/src/main/assets/tv_catalog.js
+          node --check james_tv/app/src/main/assets/tv_navigation.js
       - name: Compile, dex, sign debug APK
         working-directory: james_tv
         run: gradle --no-daemon --stacktrace assembleDebug
@@ -53,6 +57,6 @@ jobs:
             adb logcat -d -s AndroidRuntime:E | tail -100
       - uses: actions/upload-artifact@v4
         with:
-          name: JamesTV-Android9-installable-APK
+          name: JamesCinema-Android9-Installable-APK
           path: james_tv/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
