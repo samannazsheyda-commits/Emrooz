@@ -66,7 +66,7 @@ public final class MainActivity extends Activity {
     private final LinkedHashSet<String> favorites=new LinkedHashSet<>();
     private String scanner,navScript;
     private String mode="HOME", filter="all", search="";
-    private boolean webFocusReady=false, loading=false, scannedHome=false;
+    private boolean webFocusReady=false, loading=false, scannedHome=false, returnAfterLogin=false;
     private long lastNavKey=0;
     private final SharedPreferences.OnSharedPreferenceChangeListener ignored=(p,k)->{};
     private SharedPreferences prefs;
@@ -245,11 +245,21 @@ public final class MainActivity extends Activity {
                 if(m.name.length()>1&&m.url.startsWith("http")&&seen.add(m.url))found.add(m);
             }
             if(found.size()>=2){
-                // Do not replace the TV home with unrelated links on a playback/detail page.
+                // Never replace native UI with the site's visual layout on sign-in.
                 if(!"DETAIL".equals(mode)&&!"PLAYER_SITE".equals(mode)){
                     catalog.clear();catalog.addAll(found);
                     scannedHome=true;saveCache();
-                    if("HOME".equals(mode))showHome();
+                    if("HOME".equals(mode)){
+                        showHome();
+                    }else if("SITE".equals(mode)&&returnAfterLogin&&found.size()>=3){
+                        boolean hasPoster=false;
+                        for(Movie m:found)if(m.image.startsWith("http")){hasPoster=true;break;}
+                        if(hasPoster){
+                            returnAfterLogin=false;
+                            showHome();
+                            toast("فیلم‌های سایت به محیط سینمایی منتقل شدند");
+                        }
+                    }
                 }
             }
         });
@@ -291,6 +301,7 @@ public final class MainActivity extends Activity {
         parent.addView(shade,new FrameLayout.LayoutParams(-1,-1));
     }
     private void showHome(){
+        removeSiteToolbar();
         mode="HOME";selected=null;video=null;ui.removeCallbacks(updatePlayback);
         tvScreen.removeAllViews();screenNative(true);
         ScrollView scroll=new ScrollView(this);
@@ -418,6 +429,7 @@ public final class MainActivity extends Activity {
     }
     private void renderDetail(){
         if(selected==null)return;
+        removeSiteToolbar();
         mode="DETAIL";
         tvScreen.removeAllViews();screenNative(true);
         FrameLayout backdrop=new FrameLayout(this);tvScreen.addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
@@ -502,6 +514,7 @@ public final class MainActivity extends Activity {
     }
     private void showSitePlayer(){
         if(selected==null)return;
+        removeSiteToolbar();
         mode="PLAYER_SITE";ui.removeCallbacks(updatePlayback);
         if(video!=null){video.stopPlayback();video=null;}
         tvScreen.removeAllViews();screenNative(false);
@@ -536,6 +549,7 @@ public final class MainActivity extends Activity {
         if(selected!=null)renderDetail();else showHome();
     }
     private void showSearch(){
+        removeSiteToolbar();
         mode="SEARCH";tvScreen.removeAllViews();screenNative(true);
         LinearLayout parent=column();parent.setPadding(dp(60),dp(45),dp(60),0);
         tvScreen.addView(parent,new FrameLayout.LayoutParams(-1,-1));
@@ -556,10 +570,35 @@ public final class MainActivity extends Activity {
         parent.addView(ops);
         input.requestFocus();
     }
+    private void removeSiteToolbar(){
+        for(int i=root.getChildCount()-1;i>=0;i--){
+            if("site_toolbar".equals(root.getChildAt(i).getTag()))root.removeViewAt(i);
+        }
+    }
+    private void goCinemaFromSite(){
+        returnAfterLogin=false;
+        showHome();
+        if(browser!=null){
+            // Read the *logged-in* page while the WebView stays in the background.
+            browser.evaluateJavascript(scanner+"\n;Boolean(window.__JamesCatalog)",r->scanCatalog());
+        }
+    }
     private void showSite(){
-        removePlayerToolbar();mode="SITE";screenNative(false);
+        removePlayerToolbar();removeSiteToolbar();
+        returnAfterLogin=catalog.isEmpty();
+        mode="SITE";screenNative(false);
         if(browser!=null){browser.requestFocus();browser.setAlpha(1f);}
-        toast("برای بازگشت به رابط تلویزیون، BACK را بزن");
+        LinearLayout toolbar=row();toolbar.setPadding(dp(7),dp(5),dp(7),dp(5));
+        toolbar.setBackground(shape(0xf10c1725,12,0));
+        toolbar.setTag("site_toolbar");
+        toolbar.addView(action("◀ بازگشت به سینما",this::goCinemaFromSite,true),pad(-2,44,0));
+        toolbar.addView(action("↶ صفحه قبل",()->{
+            if(browser!=null&&browser.canGoBack())browser.goBack();
+        },false),pad(-2,44,0));
+        FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.RIGHT);
+        p.setMargins(dp(12),dp(10),dp(16),0);
+        root.addView(toolbar,p);toolbar.bringToFront();
+        toast("بعد از ورود، گزینه بازگشت به سینما را بزن");
     }
     private void refreshSite(){
         search="";filter="all";mode="HOME";showHome();
@@ -625,8 +664,7 @@ public final class MainActivity extends Activity {
         if("PLAYER_NATIVE".equals(mode)||"PLAYER_SITE".equals(mode)){backToDetail();return;}
         if("DETAIL".equals(mode)||"SEARCH".equals(mode)){showHome();return;}
         if("SITE".equals(mode)){
-            if(browser!=null&&browser.canGoBack()){browser.goBack();return;}
-            showHome();return;
+            goCinemaFromSite();return;
         }
         super.onBackPressed();
     }
@@ -637,6 +675,7 @@ public final class MainActivity extends Activity {
         super.onPause();
     }
     @Override protected void onDestroy(){
+        removeSiteToolbar();
         ui.removeCallbacksAndMessages(null);photos.shutdownNow();
         if(video!=null){video.stopPlayback();video=null;}
         if(browser!=null){root.removeView(browser);browser.stopLoading();browser.destroy();browser=null;}
