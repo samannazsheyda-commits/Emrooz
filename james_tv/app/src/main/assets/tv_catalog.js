@@ -12,7 +12,7 @@
      var a=absolute(src);if(a)return a;
    }
    for(var cur=node,depth=0;cur&&depth<3;cur=cur.firstElementChild,depth++){
-      var st=cur.getAttribute&&cur.getAttribute("style")||"";
+      var st=(cur.getAttribute&&cur.getAttribute("style")||"")+";background-image:"+(getComputedStyle(cur).backgroundImage||"");
       var m=st.match(/background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)/i);
       if(m)return absolute(m[1]);
    }
@@ -52,7 +52,7 @@
    const dimensions=function(anchor){
       let img=anchor.matches("img")?anchor:anchor.querySelector("img");
       let r=(img||anchor).getBoundingClientRect();
-      let width=img?.naturalWidth||img?.width||r.width||0, height=img?.naturalHeight||img?.height||r.height||0;
+      let width=(img&&img.naturalWidth)||(img&&img.width)||r.width||0, height=(img&&img.naturalHeight)||(img&&img.height)||r.height||0;
       return {width:Math.round(width),height:Math.round(height),ratio:height?Math.round(width/height*1000)/1000:0};
    };
    for(let a of cards){
@@ -67,7 +67,7 @@
       let title=titleOf(a);
       if((!title||title.length<3)&&a.parentElement){
           const h=a.parentElement.querySelector("h2,h3,h4,[class*=title],[class*=name]");
-          title=clean(h?.innerText||h?.textContent||"");
+          title=clean((h&&h.innerText)||(h&&h.textContent)||"");
       }
       if(!title||title.length<3||/^(home|login|menu|profile|ورود|خانه|خروج|جستجو|search)$/i.test(title))continue;
       const group=headingFor(a);
@@ -89,7 +89,7 @@
             if(/Movie|TVSeries|TVEpisode|VideoObject/i.test(type)){
               let pic=Array.isArray(data.image)?data.image[0]:data.image;
               if(pic&&typeof pic==="object")pic=pic.url||pic.contentUrl;
-              const href=absolute(data.url||data.mainEntityOfPage?.["@id"]||data.mainEntityOfPage);
+              const href=absolute(data.url||(data.mainEntityOfPage&&data.mainEntityOfPage["@id"])||data.mainEntityOfPage);
               const image=absolute(pic),title=clean(data.name||data.headline).slice(0,100);
               if(href&&image&&title.length>2&&!seen.has(href)){
                 seen.add(href);entries.push({title,url:href,image,group:"عنوان‌های James",
