@@ -87,6 +87,8 @@ public final class MainActivity extends Activity {
     };
     static class Movie {
         String name,url,image,group,kind,description="",year="",stream="",playUrl="";
+        double ratio=0;
+        int imageWidth=0,imageHeight=0;
         Movie(JSONObject j){
             name=j.optString("title","");
             url=j.optString("url","");
@@ -95,6 +97,8 @@ public final class MainActivity extends Activity {
             kind=j.optString("type","movie");
             description=j.optString("overview","");
             year=j.optString("year","");
+            ratio=j.optDouble("imageRatio",0);
+            imageWidth=j.optInt("imageWidth",0);imageHeight=j.optInt("imageHeight",0);
         }
     }
     private int dp(float v){return (int)(getResources().getDisplayMetrics().density*v+.5f);}
@@ -275,10 +279,15 @@ public final class MainActivity extends Activity {
                 Movie m=new Movie(item);
                 if(m.name.length()>2&&m.url.startsWith("http")&&m.image.startsWith("http")&&seen.add(m.url))found.add(m);
             }
-            if(found.size()>=2){
+            if(found.size()>=1 && !"login".equals(j.optString("pageType",""))){
                 // Never replace native UI with the site's visual layout on sign-in.
                 if(!"DETAIL".equals(mode)&&!"PLAYER_SITE".equals(mode)){
                     boolean wasLogin="LOGIN".equals(mode);
+                    boolean same=found.size()==catalog.size();
+                    if(same){for(int z=0;z<found.size();z++){
+                        if(!found.get(z).url.equals(catalog.get(z).url)){same=false;break;}
+                    }}
+                    if(same && "HOME".equals(mode))return;
                     catalog.clear();catalog.addAll(found);
                     scannedHome=true;saveCache();
                     if("HOME".equals(mode)||wasLogin){
@@ -302,6 +311,7 @@ public final class MainActivity extends Activity {
             for(Movie m:catalog){JSONObject o=new JSONObject();
                 o.put("title",m.name);o.put("url",m.url);o.put("image",m.image);
                 o.put("group",m.group);o.put("type",m.kind);o.put("year",m.year);
+                o.put("imageRatio",m.ratio);o.put("imageWidth",m.imageWidth);o.put("imageHeight",m.imageHeight);
                 a.put(o);}
             prefs.edit().putString("catalog",a.toString()).apply();
         }catch(Exception ignored){}
@@ -364,6 +374,8 @@ public final class MainActivity extends Activity {
         }
         if(list.size()==0){emptyHome(layout);return;}
         Movie hero=list.get(0);
+        for(Movie candidate:list){if(candidate.ratio>=1.5){hero=candidate;break;}}
+        final Movie heroMovie=hero;
         FrameLayout banner=new FrameLayout(this);
         LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,dp(248));
         bp.setMargins(dp(42),dp(4),dp(42),dp(24));layout.addView(banner,bp);
@@ -379,8 +391,8 @@ public final class MainActivity extends Activity {
               ("series".equals(hero.kind)?"سریال":"فیلم")+"   •   از سایت James",15,false);
         meta.setTextColor(0xffc4cfdb);bannerContent.addView(meta,pad(-1,30,14));
         LinearLayout actions=row();
-        actions.addView(action("▶  تماشا",()->openMovie(hero),true),pad(-2,49,0));
-        actions.addView(action("جزئیات",()->openMovie(hero),false),pad(-2,49,0));
+        actions.addView(action("▶  تماشا",()->openMovie(heroMovie),true),pad(-2,49,0));
+        actions.addView(action("جزئیات",()->openMovie(heroMovie),false),pad(-2,49,0));
         bannerContent.addView(actions);
 
         LinkedHashMap<String,ArrayList<Movie>> groups=new LinkedHashMap<>();
@@ -418,13 +430,15 @@ public final class MainActivity extends Activity {
         brand.setGravity(Gravity.CENTER);empty.addView(brand,pad(-1,70,5));
         String message;
         if("favorites".equals(filter))message="هنوز فیلمی به فهرست من اضافه نکردی.";
-        else if(catalog.isEmpty())message="برای نمایش فیلم‌های واقعی با حساب اشتراکی وارد سایت شو.\nاپ پوستر و فیلم ساختگی نمایش نمی‌دهد.";
+        else if(catalog.isEmpty())message="پس از ورود با حساب اصلی James، به سینما برگرد.\nفقط عنوان‌ها و پوسترهای واقعی سایت نمایش داده می‌شوند.";
+
         else message="موردی در این بخش پیدا نشد.";
         TextView state=label(message,20,false);state.setGravity(Gravity.CENTER);
         empty.addView(state,pad(-1,125,9));
         LinearLayout buttons=row();buttons.setGravity(Gravity.CENTER);
         buttons.addView(action("ورود و مشاهده سایت",this::showSite,true),pad(-2,52,0));
         buttons.addView(action("بروزرسانی فهرست",this::refreshSite,false),pad(-2,52,0));
+        buttons.addView(action("بررسی اتصال",this::showCatalogDiagnostics,false),pad(-2,52,0));
         empty.addView(buttons);layout.addView(empty,new LinearLayout.LayoutParams(-1,dp(460)));
     }
     private void addShelf(LinearLayout parent,String group,List<Movie> movies){
@@ -594,6 +608,9 @@ public final class MainActivity extends Activity {
     private void goCinemaFromSite(){
         returnAfterLogin=false;
         showHome();
+        ui.postDelayed(this::scanCatalog,1400);
+        ui.postDelayed(this::scanCatalog,4300);
+        ui.postDelayed(this::scanCatalog,9000);
         if(browser!=null){
             // Read the *logged-in* page while the WebView stays in the background.
             browser.evaluateJavascript(scanner+"\n;Boolean(window.__JamesCatalog)",r->scanCatalog());
@@ -649,6 +666,23 @@ public final class MainActivity extends Activity {
         root.addView(toolbar,p);toolbar.bringToFront();
         keepExitVisible();
         toast("بعد از ورود، «بازگشت به سینما» را بزن تا محتوای واقعی خوانده شود");
+    }
+    private void showCatalogDiagnostics(){
+        if(browser==null){toast("موتور سایت در دسترس نیست");return;}
+        browser.evaluateJavascript(scanner+"\n;Boolean(window.__JamesCatalog)",v->
+            evaluate("(function(){try{var x=window.__JamesCatalog.collect();return JSON.stringify({found:x.found,imageCount:x.imageCount,anchorCount:x.anchorCount,pageType:x.pageType})}catch(e){return '{}'}})()",result->{
+                JSONObject j=unpack(result);
+                String msg=j==null?"اطلاعاتی قابل خواندن نبود":
+                    "تعداد پوسترهای قابل شناسایی: "+j.optInt("found",0)+"\n"+
+                    "تصاویر موجود در صفحه: "+j.optInt("imageCount",0)+"\n"+
+                    "لینک‌های صفحه: "+j.optInt("anchorCount",0)+"\n"+
+                    "نوع صفحه: "+j.optString("pageType","unknown")+"\n"+
+                    "این گزارش هیچ رمز، کوکی یا اطلاعات حسابی ندارد.";
+                new android.app.AlertDialog.Builder(this)
+                    .setTitle("وضعیت خواندن محتوای James").setMessage(msg)
+                    .setPositiveButton("باشه",(d,w)->{}).show();
+            })
+        );
     }
     private void refreshSite(){
         search="";filter="all";mode="HOME";showHome();
