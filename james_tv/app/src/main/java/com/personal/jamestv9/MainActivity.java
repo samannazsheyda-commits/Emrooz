@@ -644,10 +644,7 @@ public final class MainActivity extends Activity {
         description.setMaxLines(5);content.addView(description,pad(-1,102,12));
         content.addView(action("ورود امن با حساب James",this::showSite,true),pad(-1,52,8));
         content.addView(action("نمایش سینما",this::showHome,false),pad(-1,46,8));
-        content.addView(action("بازخوانی سایت",()->{
-            if(browser!=null)browser.loadUrl(SITE);
-            showSite();
-        },false),pad(-1,46,0));
+
     }
     private void showSite(){
         removePlayerToolbar();removeSiteToolbar();
