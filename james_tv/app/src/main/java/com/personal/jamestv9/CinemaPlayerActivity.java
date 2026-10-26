@@ -78,7 +78,7 @@ public final class CinemaPlayerActivity extends Activity {
         ribbon.addView(action("⏯ پخش/توقف",()->toggle()));
         ribbon.addView(action("۱۰ ثانیه ↷",()->seek(10000)));
         ribbon.getChildAt(0).requestFocus();
-        TextView exit=action("⏻  خروج از برنامه",this::confirmExit);
+        TextView exit=action("خروج از برنامه",this::confirmExit);
         exit.setTextSize(13);
         exit.setContentDescription("خروج از برنامه");
         FrameLayout.LayoutParams exitPos=new FrameLayout.LayoutParams(-2,dp(43),Gravity.TOP|Gravity.RIGHT);
