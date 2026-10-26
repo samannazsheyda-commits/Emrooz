@@ -206,7 +206,8 @@ public final class MainActivity extends Activity {
             if(catalog.isEmpty())showLogin();else showHome();
             browser.loadUrl(SITE);
         }catch(Throwable t){
-            TextView problem=label("James Cinema\nخطا در راه‌اندازی موتور مرورگر.\nAndroid System WebView را فعال یا به‌روزرسانی کن.",22,true);
+            android.util.Log.e("JamesCinema","Application startup",t);
+            TextView problem=label("James Cinema\nخطا در راه‌اندازی:\n"+t.getClass().getSimpleName()+" — "+String.valueOf(t.getMessage()),22,true);
             problem.setGravity(Gravity.CENTER);root.addView(problem,new FrameLayout.LayoutParams(-1,-1));
         }
     }
