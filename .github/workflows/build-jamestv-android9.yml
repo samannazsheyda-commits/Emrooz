@@ -58,8 +58,7 @@ jobs:
             adb shell uiautomator dump /sdcard/window.xml
             adb pull /sdcard/window.xml james_tv/login-ui.xml
             adb exec-out screencap -p > james_tv/login-screen.png
-            grep -o "text=\\"[^\\"]*\\"" james_tv/login-ui.xml | head -20 || true
-            grep -q "JAMES" james_tv/login-ui.xml || echo "native header not detected"
+            head -c 3500 james_tv/login-ui.xml || true
       - uses: actions/upload-artifact@v4
         with:
           name: JamesCinema-NativeV2-Android9-APK
