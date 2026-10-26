@@ -144,7 +144,7 @@ public final class MainActivity extends Activity {
     }
     @Override public void onCreate(Bundle b){
         super.onCreate(b);immersive();
-        prefs=getSharedPreferences("tv_local",MODE_PRIVATE);
+        prefs=getSharedPreferences("tv_real_content_v3",MODE_PRIVATE);
         favorites.addAll(prefs.getStringSet("favorites",Collections.<String>emptySet()));
         root=new FrameLayout(this);root.setBackgroundColor(BG);setContentView(root);
         try{
@@ -273,7 +273,7 @@ public final class MainActivity extends Activity {
             for(int i=0;i<a.length();i++){
                 JSONObject item=a.optJSONObject(i);if(item==null)continue;
                 Movie m=new Movie(item);
-                if(m.name.length()>1&&m.url.startsWith("http")&&seen.add(m.url))found.add(m);
+                if(m.name.length()>2&&m.url.startsWith("http")&&m.image.startsWith("http")&&seen.add(m.url))found.add(m);
             }
             if(found.size()>=2){
                 // Never replace native UI with the site's visual layout on sign-in.
@@ -600,115 +600,38 @@ public final class MainActivity extends Activity {
         }
     }
 
+
     private void showLogin(){
         mode="LOGIN";loginStatus=null;
         removeSiteToolbar();removePlayerToolbar();
         tvScreen.removeAllViews();screenNative(true);
-        FrameLayout stage=new FrameLayout(this);
-        stage.setBackgroundColor(BG);
-        tvScreen.addView(stage,new FrameLayout.LayoutParams(-1,-1));
-
-        // Full native TV form: the underlying website is used only to establish
-        // the subscriber's session on the original domain.
+        FrameLayout frame=new FrameLayout(this);frame.setBackgroundColor(BG);
+        tvScreen.addView(frame,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout content=column();
-        content.setPadding(dp(27),dp(22),dp(27),dp(18));
+        content.setPadding(dp(38),dp(22),dp(38),dp(22));
         content.setGravity(Gravity.CENTER_VERTICAL);
         content.setBackground(shape(0xff181820,18,0));
-        int widthDp=(int)(getResources().getDisplayMetrics().widthPixels/
-                         getResources().getDisplayMetrics().density);
-        int panelWidth=Math.min(550,Math.max(330,widthDp-48));
-        FrameLayout.LayoutParams box=new FrameLayout.LayoutParams(dp(panelWidth),-1,Gravity.CENTER);
-        box.setMargins(0,dp(12),0,dp(12));
-        stage.addView(content,box);
+        FrameLayout.LayoutParams params=new FrameLayout.LayoutParams(dp(610),-1,Gravity.CENTER);
+        params.setMargins(dp(4),dp(20),dp(4),dp(20));
+        frame.addView(content,params);
 
-        TextView brand=label("JAMES  CINEMA",32,true);
-        brand.setGravity(Gravity.CENTER);brand.setTextColor(TEAL);
-        content.addView(brand,pad(-1,57,8));
-        TextView heading=label("ورود به حساب اشتراکی",22,true);
-        heading.setGravity(Gravity.CENTER);content.addView(heading,pad(-1,41,8));
-        TextView description=label("ورود از داخل خود اپ انجام می‌شود. نام کاربری و رمز عبور فقط به فرم همان سایت James فرستاده می‌شود.",14,false);
-        description.setTextColor(0xffb5b5c0);description.setGravity(Gravity.CENTER);
-        content.addView(description,pad(-1,56,15));
+        TextView brand=label("JAMES CINEMA",35,true);
+        brand.setTextColor(TEAL);brand.setGravity(Gravity.CENTER);
+        content.addView(brand,pad(-1,85,12));
 
-        final EditText account=new EditText(this);
-        account.setSingleLine(true);account.setTextColor(WHITE);account.setTextSize(18);
-        account.setHint("نام کاربری یا ایمیل");account.setHintTextColor(0xff92949f);
-        account.setPadding(dp(16),0,dp(16),0);account.setBackground(shape(0xff30303a,12,0));
-        account.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        account.setFocusable(true);content.addView(account,pad(-1,55,11));
-        final EditText password=new EditText(this);
-        password.setSingleLine(true);password.setTextColor(WHITE);password.setTextSize(18);
-        password.setHint("رمز عبور");password.setHintTextColor(0xff92949f);
-        password.setPadding(dp(16),0,dp(16),0);password.setBackground(shape(0xff30303a,12,0));
-        password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        content.addView(password,pad(-1,55,12));
+        TextView intro=label("سینمای اختصاصی تو روی تلویزیون",24,true);
+        intro.setGravity(Gravity.CENTER);content.addView(intro,pad(-1,58,15));
 
-        loginStatus=label("ابتدا اتصال امن به James برقرار می‌شود.",13,false);
-        loginStatus.setTextColor(0xffd5d5df);loginStatus.setGravity(Gravity.CENTER);
-        content.addView(loginStatus,pad(-1,36,10));
-        content.addView(action("ورود به سینما  ▶",()->{
-            String a=account.getText().toString().trim();
-            String p=password.getText().toString();
-            if(a.isEmpty()||p.isEmpty()){loginStatus.setText("نام کاربری و رمز عبور را وارد کن.");return;}
-            if(browser==null||loading){loginStatus.setText("صفحه ورود درحال بارگذاری است؛ دوباره تلاش کن.");return;}
-            hasSubmittedLogin=true;
-            loginStatus.setText("درحال ورود با حساب اشتراکی...");
-            submitOnOfficialSite(a,p,0);
-            password.setText("");
-        },true),pad(-1,54,7));
-        content.addView(action("درخواست بارگذاری دوباره",()->{
+        TextView description=label("برای استفاده از اشتراک، یک‌بار با فرم واقعی سایت James وارد شو. بعد از ورود، «بازگشت به سینما» را بزن تا فیلم‌ها و تصاویر همان سایت خوانده شوند.",18,false);
+        description.setGravity(Gravity.CENTER);description.setTextColor(0xffc1c2cd);
+        description.setMaxLines(5);content.addView(description,pad(-1,155,22));
+        content.addView(action("ورود امن با حساب James",this::showSite,true),pad(-1,62,12));
+        content.addView(action("نمایش سینما",this::showHome,false),pad(-1,54,12));
+        content.addView(action("بازخوانی سایت",()->{
             if(browser!=null)browser.loadUrl(SITE);
-            loginStatus.setText("دریافت فرم ورود سایت ...");
-        },false),pad(-1,48,7));
-        content.addView(action("ورود جایگزین از سایت",this::showSite,false),pad(-1,48,7));
-        content.addView(action("نمایش محیط سینما",this::showHome,false),pad(-1,48,0));
+            showSite();
+        },false),pad(-1,54,0));
     }
-    private void submitOnOfficialSite(String username,String password,int attempt){
-        if(browser==null)return;
-        final String injected="(function(){try{"
-           +"if(location.hostname!=='james.david-lean.net')return JSON.stringify({status:'origin'});"
-           +"var p=document.querySelector('input[type=password],input[autocomplete=current-password]');"
-           +"if(!p){"
-           +"var entry=Array.from(document.querySelectorAll('button,a')).find(function(x){return /sign.?in|log.?in|ورود/i.test((x.innerText||x.textContent||'').trim())});"
-           +"if(entry){entry.click();return JSON.stringify({status:'revealing'});}"
-           +"return JSON.stringify({status:'missing'});}"
-           +"var f=p.closest('form');"
-           +"if(f){var target=new URL(f.action||location.href,location.href);if(target.hostname!=='james.david-lean.net')return JSON.stringify({status:'origin'});}"
-           +"var u=(f||document).querySelector('input[autocomplete=username],input[type=email],input[name*=user i],input[name*=email i],input[name*=login i],input[type=text]');"
-           +"if(!u||u===p)return JSON.stringify({status:'missing'});"
-           +"var value=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;"
-           +"function fill(el,val){value.call(el,val);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}"
-           +"fill(u,"+JSONObject.quote(username)+");fill(p,"+JSONObject.quote(password)+");"
-           +"if(f){var submit=f.querySelector('button[type=submit],input[type=submit]');"
-           +"if(submit)submit.click();else if(f.requestSubmit)f.requestSubmit();else f.submit();}"
-           +"else{var b=Array.from(document.querySelectorAll('button')).find(function(x){return /sign.?in|log.?in|ورود|submit/i.test(x.innerText||x.textContent||'')});if(!b)return JSON.stringify({status:'missing'});b.click();}"
-           +"return JSON.stringify({status:'submitted'});"
-           +"}catch(e){return JSON.stringify({status:'error'});}})()";
-        evaluate(injected,response->{
-            JSONObject j=unpack(response);
-            String code=j==null?"error":j.optString("status","error");
-            if("revealing".equals(code)&&attempt<2){
-                ui.postDelayed(()->submitOnOfficialSite(username,password,attempt+1),850);
-            }else if("submitted".equals(code)){
-                if(loginStatus!=null)loginStatus.setText("درحال بررسی ورود و دریافت فیلم‌ها...");
-                for(int t=0;t<4;t++){
-                    final int n=t;
-                    ui.postDelayed(()->{
-                        if(browser!=null)scanCatalog();
-                        if("LOGIN".equals(mode)&&loginStatus!=null&&n==3){
-                            loginStatus.setText("ورود ارسال شد؛ اما فهرست فیلم‌ها شناسایی نشد. اتصال سایت یا فرم ورود را بررسی کن.");
-                        }
-                    },1400+t*2100);
-                }
-            }else{
-                if(loginStatus!=null){
-                    if("origin".equals(code))loginStatus.setText("برای امنیت، ورود فقط در آدرس اصلی James مجاز است.");
-                    else loginStatus.setText("فرم ورود سایت به‌صورت خودکار شناسایی نشد. از «ورود جایگزین» استفاده کن.");
-                }
-            }
-        });
-    }
-
     private void showSite(){
         removePlayerToolbar();removeSiteToolbar();
         returnAfterLogin=catalog.isEmpty();
@@ -725,7 +648,7 @@ public final class MainActivity extends Activity {
         p.setMargins(dp(12),dp(10),0,0);
         root.addView(toolbar,p);toolbar.bringToFront();
         keepExitVisible();
-        toast("این حالت فقط برای ورود یا پخش‌های ناسازگار است؛ به سینما برگرد");
+        toast("بعد از ورود، «بازگشت به سینما» را بزن تا محتوای واقعی خوانده شود");
     }
     private void refreshSite(){
         search="";filter="all";mode="HOME";showHome();
