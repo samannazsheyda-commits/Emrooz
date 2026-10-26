@@ -61,6 +61,7 @@ public final class MainActivity extends Activity {
     private LinearLayout playerButtons;
     private SeekBar playerSeek;
     private TextView playerTime;
+    private TextView exitControl;
     private TextView loginStatus;
     private boolean hasSubmittedLogin=false;
     private Movie selected;
@@ -194,6 +195,7 @@ public final class MainActivity extends Activity {
                     fullscreenView=view;fullscreenCallback=cb;
                     root.addView(view,new FrameLayout.LayoutParams(-1,-1));view.bringToFront();
                     view.requestFocus();getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    keepExitVisible();
                 }
                 @Override public void onHideCustomView(){hideFullScreen();}
                 @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message){
@@ -202,6 +204,7 @@ public final class MainActivity extends Activity {
             });
             root.addView(browser,new FrameLayout.LayoutParams(-1,-1));
             tvScreen=new FrameLayout(this);root.addView(tvScreen,new FrameLayout.LayoutParams(-1,-1));
+            installExitControl();
             restoreCache();
             if(catalog.isEmpty())showLogin();else showHome();
             browser.loadUrl(SITE);
@@ -217,6 +220,31 @@ public final class MainActivity extends Activity {
             while((n=in.read(b))!=-1)out.write(b,0,n);
             return out.toString("UTF-8");
         }
+    }
+    private void installExitControl(){
+        exitControl=action("⏻  خروج از برنامه",this::confirmExit,false);
+        exitControl.setTextSize(13);
+        exitControl.setContentDescription("خروج از برنامه");
+        exitControl.setPadding(dp(15),dp(7),dp(15),dp(7));
+        FrameLayout.LayoutParams pos=new FrameLayout.LayoutParams(-2,dp(43),Gravity.TOP|Gravity.RIGHT);
+        pos.setMargins(dp(8),dp(9),dp(12),0);
+        root.addView(exitControl,pos);
+        exitControl.bringToFront();
+    }
+    private void keepExitVisible(){
+        if(exitControl!=null){
+            exitControl.setVisibility(View.VISIBLE);
+            exitControl.bringToFront();
+        }
+    }
+    private void confirmExit(){
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("خروج از James Cinema")
+            .setMessage("می‌خواهی برنامه را ببندی؟")
+            .setPositiveButton("خروج", (d,which)->finishAffinity())
+            .setNegativeButton("انصراف", (d,which)->{
+                if(exitControl!=null)exitControl.requestFocus();
+            }).show();
     }
     private void immersive(){
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -295,6 +323,7 @@ public final class MainActivity extends Activity {
             if(!show)browser.bringToFront();
             else if(tvScreen!=null)tvScreen.bringToFront();
         }
+        keepExitVisible();
     }
     private void drawBackdrop(FrameLayout parent,String poster){
         ImageView art=new ImageView(this);art.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -521,6 +550,7 @@ public final class MainActivity extends Activity {
         toolbar.addView(action("−10",()->evaluate("window.__JamesCatalog&&window.__JamesCatalog.player('rewind')",null),false),pad(-2,41,0));
         toolbar.addView(action("+10",()->evaluate("window.__JamesCatalog&&window.__JamesCatalog.player('forward')",null),false),pad(-2,41,0));
         toolbar.bringToFront();
+        keepExitVisible();
     }
     private void removePlayerToolbar(){
         for(int i=root.getChildCount()-1;i>=0;i--){
@@ -694,6 +724,7 @@ public final class MainActivity extends Activity {
         FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.RIGHT);
         p.setMargins(dp(12),dp(10),dp(16),0);
         root.addView(toolbar,p);toolbar.bringToFront();
+        keepExitVisible();
         toast("این حالت فقط برای ورود یا پخش‌های ناسازگار است؛ به سینما برگرد");
     }
     private void refreshSite(){
@@ -759,11 +790,11 @@ public final class MainActivity extends Activity {
         if(fullscreenView!=null){hideFullScreen();return;}
         if("PLAYER_NATIVE".equals(mode)||"PLAYER_SITE".equals(mode)){backToDetail();return;}
         if("DETAIL".equals(mode)||"SEARCH".equals(mode)){showHome();return;}
-        if("LOGIN".equals(mode)){showHome();return;}
+        if("LOGIN".equals(mode)){confirmExit();return;}
         if("SITE".equals(mode)){
             goCinemaFromSite();return;
         }
-        super.onBackPressed();
+        confirmExit();
     }
     @Override public void onResume(){super.onResume();immersive();if(browser!=null)browser.onResume();}
     @Override public void onPause(){
