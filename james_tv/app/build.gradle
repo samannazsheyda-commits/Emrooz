@@ -11,11 +11,11 @@ android {
     namespace 'com.personal.jamestv9'
     compileSdk 35
     defaultConfig {
-        applicationId 'com.personal.jamestv9'
+        applicationId 'com.personal.jamescinema.realdata'
         minSdk 23
         targetSdk 32
-        versionCode 5
-        versionName '5.0-cinema-native'
+        versionCode 6
+        versionName '6.0-realdata-beta'
     }
     buildTypes { release { minifyEnabled false } }
     compileOptions {
