@@ -1,5 +1,5 @@
 (function(){
- if(window.__JamesCatalog)return;
+ if(window.__JamesCatalog&&window.__JamesCatalog.version==="3.1")return;
  function clean(v){return String(v||"").replace(/\s+/g," ").trim().slice(0,240);}
  function absolute(v){if(!v)return "";try{var u=new URL(v,location.href);return /^https?:$/.test(u.protocol)?u.href:"";}catch(e){return "";}}
  function imageOf(node){
@@ -46,43 +46,65 @@
    seen.add(entry.url);items.push(entry);
  }
  function collect(){
-   var seen=new Set(),items=[];
-   var anchors=[].slice.call(document.querySelectorAll("a[href]")).slice(0,2500);
-   anchors.forEach(function(a){
-     if(items.length>=240)return;
-     var href=absolute(a.getAttribute("href")),image=imageOf(a);
-     if(!href||href===location.href||href.startsWith("javascript:")||href.endsWith("#"))return;
-     var title=titleOf(a);
-     if(!title)return;
-     var likely=/film|movie|watch|series|tv-show|episode|video|media|title|play|detail|show|stream|item|content/i.test(href);
-     if(!image&&!likely)return;
-     if(!image && title.length<5)return;
-     var grp=headingFor(a), combined=(grp+" "+href).toLowerCase();
-     var type=/سریال|series|season|episode|tv.show/i.test(combined)?"series":"movie";
-     var year=(title+" "+a.textContent).match(/(?:19|20)\d{2}/);
-     emit(items,seen,{title:title,url:href,image:image||"",group:grp,type:type,
-       year:year?year[0]:""});
-   });
-   Array.from(document.querySelectorAll('script[type="application/ld+json"]')).slice(0,15).forEach(function(s){
-     try{
-       var parsed=JSON.parse(s.textContent);
-       function walk(obj,depth){
-         if(!obj||depth>5||items.length>=240)return;
-         if(Array.isArray(obj)){obj.slice(0,150).forEach(function(x){walk(x,depth+1);});return;}
-         if(typeof obj!=="object")return;
-         var type=String(obj["@type"]||"");
-         if(/Movie|TVSeries|TVEpisode|VideoObject/i.test(type)){
-            var pic=obj.image; if(Array.isArray(pic))pic=pic[0];if(pic&&typeof pic==="object")pic=pic.url||pic.contentUrl;
-            emit(items,seen,{title:clean(obj.name||obj.headline),url:absolute(obj.url||obj.mainEntityOfPage),
-              image:absolute(pic),group:"از اطلاعات سایت",type:/Series|Episode/.test(type)?"series":"movie",
-              year:String(obj.datePublished||"").slice(0,4),overview:clean(obj.description)});
+   const images=document.querySelectorAll("img");
+   const entries=[],seen=new Set();
+   const cards=Array.from(document.querySelectorAll("a[href],[role=link][href]")).slice(0,3500);
+   const dimensions=function(anchor){
+      let img=anchor.matches("img")?anchor:anchor.querySelector("img");
+      let r=(img||anchor).getBoundingClientRect();
+      let width=img?.naturalWidth||img?.width||r.width||0, height=img?.naturalHeight||img?.height||r.height||0;
+      return {width:Math.round(width),height:Math.round(height),ratio:height?Math.round(width/height*1000)/1000:0};
+   };
+   for(let a of cards){
+      if(entries.length>=300)break;
+      if(a.closest("header,footer,nav,form"))continue;
+      let href=absolute(a.getAttribute("href")), image=imageOf(a);
+      if(!href||href===location.href||seen.has(href))continue;
+      if(/\/(login|logout|register|signup|privacy|terms|contact|account|settings)(\/|[?#]|$)/i.test(href))continue;
+      if(!image||/favicon|avatar|logo|icon|flag|placeholder|gravatar/i.test(image))continue;
+      const dim=dimensions(a);
+      if(dim.width>0&&dim.height>0&&dim.width<65&&dim.height<65)continue;
+      let title=titleOf(a);
+      if((!title||title.length<3)&&a.parentElement){
+          const h=a.parentElement.querySelector("h2,h3,h4,[class*=title],[class*=name]");
+          title=clean(h?.innerText||h?.textContent||"");
+      }
+      if(!title||title.length<3||/^(home|login|menu|profile|ورود|خانه|خروج|جستجو|search)$/i.test(title))continue;
+      const group=headingFor(a);
+      const kind=/سریال|series|season|episode|tv.show|انیمه|anime/i.test(group+" "+href)?"series":"movie";
+      const year=(title+" "+a.textContent).match(/(?:19|20)\d{2}/);
+      seen.add(href);
+      entries.push({title:title.slice(0,100),url:href,image,group,type:kind,
+        year:year?year[0]:"",imageWidth:dim.width,imageHeight:dim.height,imageRatio:dim.ratio});
+   }
+   // Structured data is useful when React/Vue card text is hidden from the DOM.
+   for(const node of Array.from(document.querySelectorAll('script[type="application/ld+json"]')).slice(0,15)){
+      try {
+         const root=JSON.parse(node.textContent);
+         function walk(data,depth){
+            if(!data||depth>5||entries.length>=300)return;
+            if(Array.isArray(data)){data.slice(0,100).forEach(x=>walk(x,depth+1));return;}
+            if(typeof data!=="object")return;
+            const type=String(data["@type"]||"");
+            if(/Movie|TVSeries|TVEpisode|VideoObject/i.test(type)){
+              let pic=Array.isArray(data.image)?data.image[0]:data.image;
+              if(pic&&typeof pic==="object")pic=pic.url||pic.contentUrl;
+              const href=absolute(data.url||data.mainEntityOfPage?.["@id"]||data.mainEntityOfPage);
+              const image=absolute(pic),title=clean(data.name||data.headline).slice(0,100);
+              if(href&&image&&title.length>2&&!seen.has(href)){
+                seen.add(href);entries.push({title,url:href,image,group:"عنوان‌های James",
+                  type:/Series|Episode/.test(type)?"series":"movie",year:String(data.datePublished||"").slice(0,4),
+                  overview:clean(data.description)});
+              }
+            }
+            for(const key of ["@graph","mainEntity","itemListElement","item","hasPart"])
+              if(data[key])walk(data[key],depth+1);
          }
-         for(var key in obj)if(["itemListElement","mainEntity","@graph","item","hasPart"].indexOf(key)>=0)walk(obj[key],depth+1);
-       }
-       walk(parsed,0);
-     }catch(e){}
-   });
-   return {url:location.href,pageTitle:document.title,items:items,found:items.length};
+         walk(root,0);
+      }catch(e){}
+   }
+   return {items:entries,found:entries.length,imageCount:images.length,anchorCount:cards.length,
+      pageType:document.querySelector("input[type=password]")?"login":"content"};
  }
  function details(){
    var desc=document.querySelector('meta[name="description"],meta[property="og:description"]');
@@ -114,5 +136,5 @@
    if(action==="fullscreen"){try{v.requestFullscreen();return true;}catch(e){}}
    return false;
  }
- window.__JamesCatalog={collect:collect,details:details,play:play,player:player};
+ window.__JamesCatalog={version:"3.1",collect:collect,details:details,play:play,player:player};
 })();
