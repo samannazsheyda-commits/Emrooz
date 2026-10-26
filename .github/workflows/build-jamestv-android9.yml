@@ -23,7 +23,9 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Android SDK 35
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+        run: |
+          SDK_MANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -name sdkmanager -type f | head -1)"
+          "$SDK_MANAGER" 'platforms;android-35' 'build-tools;35.0.0'
       - name: Compile, dex, sign debug APK
         working-directory: james_tv
         run: gradle --no-daemon --stacktrace assembleDebug
