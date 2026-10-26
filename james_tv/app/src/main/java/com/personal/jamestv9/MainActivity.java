@@ -230,7 +230,7 @@ public final class MainActivity extends Activity {
         exitControl.setTextSize(13);
         exitControl.setContentDescription("خروج از برنامه");
         exitControl.setPadding(dp(15),dp(7),dp(15),dp(7));
-        FrameLayout.LayoutParams pos=new FrameLayout.LayoutParams(-2,dp(43),Gravity.TOP|Gravity.RIGHT);
+        FrameLayout.LayoutParams pos=new FrameLayout.LayoutParams(dp(170),dp(43),Gravity.TOP|Gravity.RIGHT);
         pos.setMargins(dp(8),dp(9),dp(12),0);
         root.addView(exitControl,pos);
         exitControl.bringToFront();
@@ -625,7 +625,7 @@ public final class MainActivity extends Activity {
         FrameLayout frame=new FrameLayout(this);frame.setBackgroundColor(BG);
         tvScreen.addView(frame,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout content=column();
-        content.setPadding(dp(38),dp(22),dp(38),dp(22));
+        content.setPadding(dp(30),dp(10),dp(30),dp(10));
         content.setGravity(Gravity.CENTER_VERTICAL);
         content.setBackground(shape(0xff181820,18,0));
         FrameLayout.LayoutParams params=new FrameLayout.LayoutParams(dp(610),-1,Gravity.CENTER);
@@ -634,20 +634,20 @@ public final class MainActivity extends Activity {
 
         TextView brand=label("JAMES CINEMA",35,true);
         brand.setTextColor(TEAL);brand.setGravity(Gravity.CENTER);
-        content.addView(brand,pad(-1,85,12));
+        content.addView(brand,pad(-1,53,7));
 
         TextView intro=label("سینمای اختصاصی تو روی تلویزیون",24,true);
-        intro.setGravity(Gravity.CENTER);content.addView(intro,pad(-1,58,15));
+        intro.setGravity(Gravity.CENTER);content.addView(intro,pad(-1,44,9));
 
         TextView description=label("برای استفاده از اشتراک، یک‌بار با فرم واقعی سایت James وارد شو. بعد از ورود، «بازگشت به سینما» را بزن تا فیلم‌ها و تصاویر همان سایت خوانده شوند.",18,false);
         description.setGravity(Gravity.CENTER);description.setTextColor(0xffc1c2cd);
-        description.setMaxLines(5);content.addView(description,pad(-1,155,22));
-        content.addView(action("ورود امن با حساب James",this::showSite,true),pad(-1,62,12));
-        content.addView(action("نمایش سینما",this::showHome,false),pad(-1,54,12));
+        description.setMaxLines(5);content.addView(description,pad(-1,102,12));
+        content.addView(action("ورود امن با حساب James",this::showSite,true),pad(-1,52,8));
+        content.addView(action("نمایش سینما",this::showHome,false),pad(-1,46,8));
         content.addView(action("بازخوانی سایت",()->{
             if(browser!=null)browser.loadUrl(SITE);
             showSite();
-        },false),pad(-1,54,0));
+        },false),pad(-1,46,0));
     }
     private void showSite(){
         removePlayerToolbar();removeSiteToolbar();
