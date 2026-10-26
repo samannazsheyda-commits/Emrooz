@@ -47,12 +47,12 @@ jobs:
           emulator-boot-timeout: 600
           script: |
             adb install -r james_tv/app/build/outputs/apk/debug/app-debug.apk
-            adb shell am start -W -n com.personal.jamestv9/.MainActivity
+            adb shell am start -W -n com.personal.jamescinema.realdata/.MainActivity
             sleep 10
             echo "Process status:"
-            adb shell pidof com.personal.jamestv9
+            adb shell pidof com.personal.jamescinema.realdata
             echo "Foreground activity:"
-            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|com.personal.jamestv9' | head -30
+            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|com.personal.jamescinema.realdata' | head -30
             echo "Java crash log:"
             adb logcat -d -s AndroidRuntime:E | tail -100
             adb shell uiautomator dump /sdcard/intro.xml
