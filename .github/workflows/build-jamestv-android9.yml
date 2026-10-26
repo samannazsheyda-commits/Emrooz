@@ -1,0 +1,35 @@
+name: Build James TV Android 9 APK
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/jamestv-android9-build
+    paths:
+      - 'james_tv/**'
+      - '.github/workflows/build-jamestv-android9.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Android SDK 35
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compile, dex, sign debug APK
+        working-directory: james_tv
+        run: gradle --no-daemon --stacktrace assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JamesTV-Android9-installable-APK
+          path: james_tv/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
