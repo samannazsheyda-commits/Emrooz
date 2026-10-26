@@ -1,9 +1,9 @@
-name: Build James Cinema TV Android 9 APK
+name: Build James Cinema Native V2 for Android 9
 on:
   workflow_dispatch:
   push:
     branches:
-      - work/jamestv-cinema-ui
+      - work/jamestv-cinema-native-v2
     paths:
       - 'james_tv/**'
       - '.github/workflows/build-jamestv-android9.yml'
@@ -55,8 +55,15 @@ jobs:
             adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|com.personal.jamestv9' | head -30
             echo "Java crash log:"
             adb logcat -d -s AndroidRuntime:E | tail -100
+            adb shell uiautomator dump /sdcard/window.xml
+            adb pull /sdcard/window.xml james_tv/login-ui.xml
+            adb exec-out screencap -p > james_tv/login-screen.png
+            grep -q "JAMES" james_tv/login-ui.xml
       - uses: actions/upload-artifact@v4
         with:
-          name: JamesCinema-Android9-Installable-APK
-          path: james_tv/app/build/outputs/apk/debug/app-debug.apk
+          name: JamesCinema-NativeV2-Android9-APK
+          path: |
+            james_tv/app/build/outputs/apk/debug/app-debug.apk
+            james_tv/login-screen.png
+            james_tv/login-ui.xml
           if-no-files-found: error
