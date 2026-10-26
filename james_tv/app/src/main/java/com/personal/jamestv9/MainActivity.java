@@ -721,8 +721,8 @@ public final class MainActivity extends Activity {
         toolbar.addView(action("↶ صفحه قبل",()->{
             if(browser!=null&&browser.canGoBack())browser.goBack();
         },false),pad(-2,44,0));
-        FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.RIGHT);
-        p.setMargins(dp(12),dp(10),dp(16),0);
+        FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.LEFT);
+        p.setMargins(dp(12),dp(10),0,0);
         root.addView(toolbar,p);toolbar.bringToFront();
         keepExitVisible();
         toast("این حالت فقط برای ورود یا پخش‌های ناسازگار است؛ به سینما برگرد");
