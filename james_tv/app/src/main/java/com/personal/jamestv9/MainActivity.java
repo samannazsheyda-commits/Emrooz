@@ -127,7 +127,7 @@ public final class MainActivity extends Activity {
         if(primary)b.setTextColor(BG);
         b.setOnClickListener(v->task.run());
         b.setOnFocusChangeListener((v,focus)->{
-            v.setBackground(shape(focus?Color.rgb(30,75,82):(primary?TEAL:PANEL),10,focus?2:0));
+            v.setBackground(shape(focus?Color.rgb(86,29,40):(primary?TEAL:PANEL),10,focus?2:0));
             b.setTextColor(focus?WHITE:(primary?BG:WHITE));
             v.animate().scaleX(focus?1.045f:1f).scaleY(focus?1.045f:1f).setDuration(115).start();
         });
@@ -740,7 +740,20 @@ public final class MainActivity extends Activity {
     }
     @Override public boolean dispatchKeyEvent(KeyEvent event){
         int key=event.getKeyCode();
-        if(fullscreenView!=null)return super.dispatchKeyEvent(event);
+        if(fullscreenView!=null){
+            if(key==KeyEvent.KEYCODE_MENU && event.getAction()==KeyEvent.ACTION_UP){
+                if(exitControl!=null)exitControl.requestFocus();
+                keepExitVisible();
+                return true;
+            }
+            if(exitControl!=null && exitControl.hasFocus())return super.dispatchKeyEvent(event);
+            return super.dispatchKeyEvent(event);
+        }
+        if(("SITE".equals(mode)||"PLAYER_SITE".equals(mode))&&key==KeyEvent.KEYCODE_MENU){
+            if(event.getAction()==KeyEvent.ACTION_UP && exitControl!=null)exitControl.requestFocus();
+            return true;
+        }
+        if(exitControl!=null && exitControl.hasFocus())return super.dispatchKeyEvent(event);
         if("PLAYER_NATIVE".equals(mode)){
             if(event.getAction()==KeyEvent.ACTION_UP && key==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE){
                 if(video!=null){if(video.isPlaying())video.pause();else video.start();}return true;
