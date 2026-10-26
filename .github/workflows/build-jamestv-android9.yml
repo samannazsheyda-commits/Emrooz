@@ -57,10 +57,8 @@ jobs:
             adb logcat -d -s AndroidRuntime:E | tail -100
             adb shell uiautomator dump /sdcard/intro.xml
             adb pull /sdcard/intro.xml james_tv/intro-ui.xml
-            if grep -q 'Viewing full screen' james_tv/intro-ui.xml; then
-              adb shell input keyevent 66
-              sleep 3
-            fi
+            grep -q 'Viewing full screen' james_tv/intro-ui.xml && adb shell input keyevent 66 || true
+            sleep 3
             adb shell uiautomator dump /sdcard/window.xml
             adb pull /sdcard/window.xml james_tv/login-ui.xml
             adb exec-out screencap -p > james_tv/login-screen.png
