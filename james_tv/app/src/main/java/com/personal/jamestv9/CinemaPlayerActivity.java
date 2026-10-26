@@ -78,6 +78,12 @@ public final class CinemaPlayerActivity extends Activity {
         ribbon.addView(action("⏯ پخش/توقف",()->toggle()));
         ribbon.addView(action("۱۰ ثانیه ↷",()->seek(10000)));
         ribbon.getChildAt(0).requestFocus();
+        TextView exit=action("⏻  خروج از برنامه",this::confirmExit);
+        exit.setTextSize(13);
+        exit.setContentDescription("خروج از برنامه");
+        FrameLayout.LayoutParams exitPos=new FrameLayout.LayoutParams(-2,dp(43),Gravity.TOP|Gravity.RIGHT);
+        exitPos.setMargins(0,dp(11),dp(12),0);
+        root.addView(exit,exitPos);exit.bringToFront();
         status=new TextView(this);status.setTextColor(0xfff1f1f1);status.setTextSize(17);
         status.setPadding(dp(30),dp(20),dp(30),dp(20));status.setGravity(Gravity.CENTER);
         FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER);
@@ -118,6 +124,16 @@ public final class CinemaPlayerActivity extends Activity {
         player.setMediaItem(item.build());
         player.prepare();player.setPlayWhenReady(true);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+    private void confirmExit(){
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("خروج از James Cinema")
+            .setMessage("می‌خواهی پخش و برنامه را ببندی؟")
+            .setPositiveButton("خروج", (dialog,which)->{
+                if(player!=null){player.stop();player.release();player=null;}
+                finishAffinity();
+            })
+            .setNegativeButton("انصراف", (dialog,which)->{}).show();
     }
     private void seek(long offset){
         if(player!=null)player.seekTo(Math.max(0,player.getCurrentPosition()+offset));
