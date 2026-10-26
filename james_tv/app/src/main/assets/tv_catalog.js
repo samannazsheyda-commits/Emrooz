@@ -104,7 +104,7 @@
       }catch(e){}
    }
    return {items:entries,found:entries.length,imageCount:images.length,anchorCount:cards.length,
-      pageType:Array.from(document.querySelectorAll("input[type=password]")).some(function(n){return n.offsetWidth>0&&n.offsetHeight>0})?"login":"content};
+      pageType:Array.from(document.querySelectorAll("input[type=password]")).some(function(n){return n.offsetWidth>0&&n.offsetHeight>0})?"login":"content"};
  }
  function details(){
    var desc=document.querySelector('meta[name="description"],meta[property="og:description"]');
