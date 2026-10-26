@@ -46,8 +46,8 @@ import java.security.MessageDigest;
  */
 public final class MainActivity extends Activity {
     private static final String SITE = "https://james.david-lean.net/";
-    private static final int BG=Color.rgb(9,13,24), PANEL=Color.rgb(20,28,43);
-    private static final int TEAL=Color.rgb(0,227,202), WHITE=Color.WHITE;
+    private static final int BG=Color.rgb(9,9,13), PANEL=Color.rgb(27,27,35);
+    private static final int TEAL=Color.rgb(232,41,63), WHITE=Color.WHITE;
     private final Handler ui=new Handler(Looper.getMainLooper());
     private final ExecutorService photos=Executors.newFixedThreadPool(4);
     private final LruCache<String,Bitmap> bitmaps=new LruCache<String,Bitmap>(18*1024*1024){
@@ -61,11 +61,13 @@ public final class MainActivity extends Activity {
     private LinearLayout playerButtons;
     private SeekBar playerSeek;
     private TextView playerTime;
+    private TextView loginStatus;
+    private boolean hasSubmittedLogin=false;
     private Movie selected;
     private final List<Movie> catalog=new ArrayList<>();
     private final LinkedHashSet<String> favorites=new LinkedHashSet<>();
     private String scanner,navScript;
-    private String mode="HOME", filter="all", search="";
+    private String mode="LOGIN", filter="all", search="";
     private boolean webFocusReady=false, loading=false, scannedHome=false, returnAfterLogin=false;
     private long lastNavKey=0;
     private final SharedPreferences.OnSharedPreferenceChangeListener ignored=(p,k)->{};
@@ -170,7 +172,7 @@ public final class MainActivity extends Activity {
                         if("DETAIL".equals(mode)||"PLAYER_SITE".equals(mode))readDetails();
                         else scanCatalog();
                     },650);
-                    if("HOME".equals(mode)||"SITE".equals(mode))ui.postDelayed(()->{
+                    if("HOME".equals(mode)||"SITE".equals(mode)||"LOGIN".equals(mode))ui.postDelayed(()->{
                         if(browser!=null&&!"DETAIL".equals(mode)&&!"PLAYER_SITE".equals(mode))scanCatalog();
                     },2600);
                 }
@@ -201,7 +203,7 @@ public final class MainActivity extends Activity {
             root.addView(browser,new FrameLayout.LayoutParams(-1,-1));
             tvScreen=new FrameLayout(this);root.addView(tvScreen,new FrameLayout.LayoutParams(-1,-1));
             restoreCache();
-            showHome();
+            if(catalog.isEmpty())showLogin();else showHome();
             browser.loadUrl(SITE);
         }catch(Throwable t){
             TextView problem=label("James Cinema\nخطا در راه‌اندازی موتور مرورگر.\nAndroid System WebView را فعال یا به‌روزرسانی کن.",22,true);
@@ -247,9 +249,11 @@ public final class MainActivity extends Activity {
             if(found.size()>=2){
                 // Never replace native UI with the site's visual layout on sign-in.
                 if(!"DETAIL".equals(mode)&&!"PLAYER_SITE".equals(mode)){
+                    boolean wasLogin="LOGIN".equals(mode);
                     catalog.clear();catalog.addAll(found);
                     scannedHome=true;saveCache();
-                    if("HOME".equals(mode)){
+                    if("HOME".equals(mode)||wasLogin){
+                        hasSubmittedLogin=false;
                         showHome();
                     }else if("SITE".equals(mode)&&returnAfterLogin&&found.size()>=3){
                         boolean hasPoster=false;
@@ -301,6 +305,7 @@ public final class MainActivity extends Activity {
         parent.addView(shade,new FrameLayout.LayoutParams(-1,-1));
     }
     private void showHome(){
+        loginStatus=null;
         removeSiteToolbar();
         mode="HOME";selected=null;video=null;ui.removeCallbacks(updatePlayback);
         tvScreen.removeAllViews();screenNative(true);
@@ -470,47 +475,27 @@ public final class MainActivity extends Activity {
         if(selected.stream.startsWith("https://")||selected.stream.startsWith("http://")){
             startNative(selected.stream);
         }else{
+            toast("این ویدئو لینک مستقیم قابل پخش ندارد؛ بازکردن پلیر اشتراکی سایت");
             showSitePlayer();
         }
     }
     private void startNative(String url){
-        mode="PLAYER_NATIVE";tvScreen.removeAllViews();screenNative(true);
-        tvScreen.setBackgroundColor(Color.BLACK);
-        video=new VideoView(this);
-        tvScreen.addView(video,new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout chrome=column();
-        FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);
-        chrome.setPadding(dp(40),dp(14),dp(40),dp(28));
-        chrome.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0x00000000,0xf8000000}));
-        tvScreen.addView(chrome,cp);
-        TextView title=label(selected.name,19,true);chrome.addView(title,pad(-1,42,4));
-        playerSeek=new SeekBar(this);playerSeek.setMax(100);
-        playerSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onStartTrackingTouch(SeekBar s){}
-            public void onStopTrackingTouch(SeekBar s){if(video!=null)video.seekTo(s.getProgress());}
-            public void onProgressChanged(SeekBar s,int progress,boolean user){if(user&&video!=null&&video.getDuration()>0)video.seekTo(progress);}
-        });
-        chrome.addView(playerSeek,pad(-1,35,4));
-        playerTime=label("00:00 / 00:00",14,false);chrome.addView(playerTime,pad(-1,26,6));
-        LinearLayout controls=row();playerButtons=controls;
-        controls.addView(action("‹  برگشت",this::backToDetail,false),pad(-2,49,0));
-        controls.addView(action("« ۱۰ ثانیه",()->{if(video!=null)video.seekTo(Math.max(0,video.getCurrentPosition()-10000));},false),pad(-2,49,0));
-        controls.addView(action("⏯  پخش/توقف",()->{
-            if(video!=null){if(video.isPlaying())video.pause();else video.start();}
-        },true),pad(-2,49,0));
-        controls.addView(action("۱۰ ثانیه »",()->{if(video!=null)video.seekTo(video.getCurrentPosition()+10000);},false),pad(-2,49,0));
-        controls.addView(action("پخش سایت",this::showSitePlayer,false),pad(-2,49,0));
-        chrome.addView(controls);
+        Intent play=new Intent(this,CinemaPlayerActivity.class);
+        play.putExtra("name",selected!=null?selected.name:"James Cinema");
+        play.putExtra("stream",url);
+        play.putExtra("referer",selected!=null?selected.url:SITE);
         try{
-            HashMap<String,String> headers=new HashMap<>();
             String cookie=CookieManager.getInstance().getCookie(url);
-            if(cookie!=null)headers.put("Cookie",cookie);
-            headers.put("Referer",selected.url);
-            video.setVideoURI(Uri.parse(url),headers);
-            video.setOnPreparedListener(mp->{video.start();getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);ui.post(updatePlayback);});
-            video.setOnErrorListener((mp,what,extra)->{toast("پلیر داخلی نتوانست ویدئو را باز کند؛ پخش سایت");showSitePlayer();return true;});
-        }catch(Exception e){showSitePlayer();}
+            if(cookie!=null)play.putExtra("cookie",cookie);
+        }catch(Exception ignored){}
+        startActivityForResult(play,143);
+    }
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+        super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode==143){
+            if(selected!=null)renderDetail();else showHome();
+            if(resultCode==RESULT_CANCELED)toast("اگر ویدئو در پلیر مستقل باز نشد، گزینه پخش سایت را امتحان کن.");
+        }
     }
     private void showSitePlayer(){
         if(selected==null)return;
@@ -583,6 +568,116 @@ public final class MainActivity extends Activity {
             browser.evaluateJavascript(scanner+"\n;Boolean(window.__JamesCatalog)",r->scanCatalog());
         }
     }
+
+    private void showLogin(){
+        mode="LOGIN";loginStatus=null;
+        removeSiteToolbar();removePlayerToolbar();
+        tvScreen.removeAllViews();screenNative(true);
+        FrameLayout stage=new FrameLayout(this);
+        stage.setBackgroundColor(BG);
+        tvScreen.addView(stage,new FrameLayout.LayoutParams(-1,-1));
+
+        // Full native TV form: the underlying website is used only to establish
+        // the subscriber's session on the original domain.
+        LinearLayout content=column();
+        content.setPadding(dp(27),dp(22),dp(27),dp(18));
+        content.setGravity(Gravity.CENTER_VERTICAL);
+        content.setBackground(shape(0xff181820,18,0));
+        int widthDp=(int)(getResources().getDisplayMetrics().widthPixels/
+                         getResources().getDisplayMetrics().density);
+        int panelWidth=Math.min(550,Math.max(330,widthDp-48));
+        FrameLayout.LayoutParams box=new FrameLayout.LayoutParams(dp(panelWidth),-1,Gravity.CENTER);
+        box.setMargins(0,dp(12),0,dp(12));
+        stage.addView(content,box);
+
+        TextView brand=label("JAMES  CINEMA",32,true);
+        brand.setGravity(Gravity.CENTER);brand.setTextColor(TEAL);
+        content.addView(brand,pad(-1,57,8));
+        TextView heading=label("ورود به حساب اشتراکی",22,true);
+        heading.setGravity(Gravity.CENTER);content.addView(heading,pad(-1,41,8));
+        TextView description=label("ورود از داخل خود اپ انجام می‌شود. نام کاربری و رمز عبور فقط به فرم همان سایت James فرستاده می‌شود.",14,false);
+        description.setTextColor(0xffb5b5c0);description.setGravity(Gravity.CENTER);
+        content.addView(description,pad(-1,56,15));
+
+        final EditText account=new EditText(this);
+        account.setSingleLine(true);account.setTextColor(WHITE);account.setTextSize(18);
+        account.setHint("نام کاربری یا ایمیل");account.setHintTextColor(0xff92949f);
+        account.setPadding(dp(16),0,dp(16),0);account.setBackground(shape(0xff30303a,12,0));
+        account.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        account.setFocusable(true);content.addView(account,pad(-1,55,11));
+        final EditText password=new EditText(this);
+        password.setSingleLine(true);password.setTextColor(WHITE);password.setTextSize(18);
+        password.setHint("رمز عبور");password.setHintTextColor(0xff92949f);
+        password.setPadding(dp(16),0,dp(16),0);password.setBackground(shape(0xff30303a,12,0));
+        password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        content.addView(password,pad(-1,55,12));
+
+        loginStatus=label("ابتدا اتصال امن به James برقرار می‌شود.",13,false);
+        loginStatus.setTextColor(0xffd5d5df);loginStatus.setGravity(Gravity.CENTER);
+        content.addView(loginStatus,pad(-1,36,10));
+        content.addView(action("ورود به سینما  ▶",()->{
+            String a=account.getText().toString().trim();
+            String p=password.getText().toString();
+            if(a.isEmpty()||p.isEmpty()){loginStatus.setText("نام کاربری و رمز عبور را وارد کن.");return;}
+            if(browser==null||loading){loginStatus.setText("صفحه ورود درحال بارگذاری است؛ دوباره تلاش کن.");return;}
+            hasSubmittedLogin=true;
+            loginStatus.setText("درحال ورود با حساب اشتراکی...");
+            submitOnOfficialSite(a,p,0);
+            password.setText("");
+        },true),pad(-1,54,7));
+        content.addView(action("درخواست بارگذاری دوباره",()->{
+            if(browser!=null)browser.loadUrl(SITE);
+            loginStatus.setText("دریافت فرم ورود سایت ...");
+        },false),pad(-1,48,7));
+        content.addView(action("ورود جایگزین از سایت",this::showSite,false),pad(-1,48,7));
+        content.addView(action("نمایش محیط سینما",this::showHome,false),pad(-1,48,0));
+    }
+    private void submitOnOfficialSite(String username,String password,int attempt){
+        if(browser==null)return;
+        final String injected="(function(){try{"
+           +"if(location.hostname!=='james.david-lean.net')return JSON.stringify({status:'origin'});"
+           +"var p=document.querySelector('input[type=password],input[autocomplete=current-password]');"
+           +"if(!p){"
+           +"var entry=Array.from(document.querySelectorAll('button,a')).find(function(x){return /sign.?in|log.?in|ورود/i.test((x.innerText||x.textContent||'').trim())});"
+           +"if(entry){entry.click();return JSON.stringify({status:'revealing'});}"
+           +"return JSON.stringify({status:'missing'});}"
+           +"var f=p.closest('form');"
+           +"if(f){var target=new URL(f.action||location.href,location.href);if(target.hostname!=='james.david-lean.net')return JSON.stringify({status:'origin'});}"
+           +"var u=(f||document).querySelector('input[autocomplete=username],input[type=email],input[name*=user i],input[name*=email i],input[name*=login i],input[type=text]');"
+           +"if(!u||u===p)return JSON.stringify({status:'missing'});"
+           +"var value=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;"
+           +"function fill(el,val){value.call(el,val);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}"
+           +"fill(u,"+JSONObject.quote(username)+");fill(p,"+JSONObject.quote(password)+");"
+           +"if(f){var submit=f.querySelector('button[type=submit],input[type=submit]');"
+           +"if(submit)submit.click();else if(f.requestSubmit)f.requestSubmit();else f.submit();}"
+           +"else{var b=Array.from(document.querySelectorAll('button')).find(function(x){return /sign.?in|log.?in|ورود|submit/i.test(x.innerText||x.textContent||'')});if(!b)return JSON.stringify({status:'missing'});b.click();}"
+           +"return JSON.stringify({status:'submitted'});"
+           +"}catch(e){return JSON.stringify({status:'error'});}})()";
+        evaluate(injected,response->{
+            JSONObject j=unpack(response);
+            String code=j==null?"error":j.optString("status","error");
+            if("revealing".equals(code)&&attempt<2){
+                ui.postDelayed(()->submitOnOfficialSite(username,password,attempt+1),850);
+            }else if("submitted".equals(code)){
+                if(loginStatus!=null)loginStatus.setText("درحال بررسی ورود و دریافت فیلم‌ها...");
+                for(int t=0;t<4;t++){
+                    final int n=t;
+                    ui.postDelayed(()->{
+                        if(browser!=null)scanCatalog();
+                        if("LOGIN".equals(mode)&&loginStatus!=null&&n==3){
+                            loginStatus.setText("ورود ارسال شد؛ اما فهرست فیلم‌ها شناسایی نشد. اتصال سایت یا فرم ورود را بررسی کن.");
+                        }
+                    },1400+t*2100);
+                }
+            }else{
+                if(loginStatus!=null){
+                    if("origin".equals(code))loginStatus.setText("برای امنیت، ورود فقط در آدرس اصلی James مجاز است.");
+                    else loginStatus.setText("فرم ورود سایت به‌صورت خودکار شناسایی نشد. از «ورود جایگزین» استفاده کن.");
+                }
+            }
+        });
+    }
+
     private void showSite(){
         removePlayerToolbar();removeSiteToolbar();
         returnAfterLogin=catalog.isEmpty();
@@ -598,7 +693,7 @@ public final class MainActivity extends Activity {
         FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.RIGHT);
         p.setMargins(dp(12),dp(10),dp(16),0);
         root.addView(toolbar,p);toolbar.bringToFront();
-        toast("بعد از ورود، گزینه بازگشت به سینما را بزن");
+        toast("این حالت فقط برای ورود یا پخش‌های ناسازگار است؛ به سینما برگرد");
     }
     private void refreshSite(){
         search="";filter="all";mode="HOME";showHome();
@@ -663,6 +758,7 @@ public final class MainActivity extends Activity {
         if(fullscreenView!=null){hideFullScreen();return;}
         if("PLAYER_NATIVE".equals(mode)||"PLAYER_SITE".equals(mode)){backToDetail();return;}
         if("DETAIL".equals(mode)||"SEARCH".equals(mode)){showHome();return;}
+        if("LOGIN".equals(mode)){showHome();return;}
         if("SITE".equals(mode)){
             goCinemaFromSite();return;
         }
