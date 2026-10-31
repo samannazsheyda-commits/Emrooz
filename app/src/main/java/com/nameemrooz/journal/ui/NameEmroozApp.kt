@@ -553,12 +553,13 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
         )
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=18.dp, vertical=14.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal=18.dp, vertical=14.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically) {
             GlassIconButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, if(language==AppLanguage.FA) "برگشت" else "Back")
             Spacer(Modifier.weight(1f))
             FixedLanguageSwitch(language) { scope.launch { store.setLanguage(it) } }
         }
+        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(18.dp))
         Text(if(language==AppLanguage.FA) "تنظیمات" else "Settings", Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(14.dp))
@@ -658,6 +659,7 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
             },
             Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.bodyMedium, color=MaterialTheme.colorScheme.onSurfaceVariant
         )
+        }
     }
 }
 
