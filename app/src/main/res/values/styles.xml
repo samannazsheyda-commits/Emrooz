@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.NameEmrooz" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">#F7F2EA</item>
+        <item name="android:statusBarColor">#F7F2EA</item>
+        <item name="android:windowBackground">#F7F2EA</item>
+    </style>
+</resources>
