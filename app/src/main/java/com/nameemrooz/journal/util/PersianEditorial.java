@@ -44,7 +44,7 @@ public final class PersianEditorial {
         Protected protectedText = protect(input);
         String text = normalizeLetters(protectedText.text);
         for (Map.Entry<String, String> fix : PHRASE_FIXES.entrySet()) {
-            text = text.replace(fix.getKey(), fix.getValue());
+            text = text.replaceAll("(?<![\\p{L}\\p{N}\\u200c])" + Pattern.quote(fix.getKey()) + "(?![\\p{L}\\p{N}\\u200c])", Matcher.quoteReplacement(fix.getValue()));
         }
         text = normalizePunctuation(text);
         text = removeFillersAndAccidentalRepeats(text);

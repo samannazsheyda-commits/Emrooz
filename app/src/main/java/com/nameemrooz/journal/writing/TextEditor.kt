@@ -28,8 +28,6 @@ class TextEditor(
     private fun isPersian(languageTag: String): Boolean = languageTag.startsWith("fa", ignoreCase = true)
 
     private fun normalizeEnglish(value: String): String = value
-        .replace(Regex("\\s+([,;:.!?])"), "$1")
-        .replace(Regex("([,;:.!?])(?=\\S)"), "$1 ")
         .replace(Regex("\\s+"), " ")
         .trim()
 

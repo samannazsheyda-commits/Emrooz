@@ -5,6 +5,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WritingEditSafetyTest {
+    @Test fun numeric_sign_and_percentage_cannot_be_removed() {
+        assertFalse(WritingEditSafety.accept("دما -۵ بود", "دما ۵ بود"))
+        assertFalse(WritingEditSafety.accept("رشد ۵٪ بود", "رشد ۵ بود"))
+    }
     @Test fun rejects_nearby_names_and_negation_changes() {
         assertFalse(WritingEditSafety.accept("امروز سارا آمد", "امروز سانا آمد"))
         assertFalse(WritingEditSafety.accept("من دارو نخوردم", "من دارو خوردم"))

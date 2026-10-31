@@ -4,6 +4,13 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,6 +55,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
+    private var showJournal by mutableStateOf(false)
+    private var screenOverlay by mutableStateOf<(@Composable () -> Unit)?>(null)
     private var unlocked = false
     private var authInProgress = false
     private var startupSplashVisible = true
@@ -56,6 +65,29 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         // Journal text must never appear in screenshots or Recent Apps thumbnails.
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        setContent {
+            val overlay = screenOverlay
+            val focus = LocalFocusManager.current
+            val keyboard = LocalSoftwareKeyboardController.current
+            LaunchedEffect(overlay != null) {
+                if (overlay != null) { focus.clearFocus(force=true); keyboard?.hide() }
+            }
+            Box(Modifier.fillMaxSize()) {
+                if (showJournal) {
+                    Box(if (overlay != null) Modifier.clearAndSetSemantics { } else Modifier) {
+                        NameEmroozApp()
+                    }
+                }
+                if (overlay != null) {
+                    Box(Modifier.fillMaxSize().pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) awaitPointerEvent().changes.forEach { it.consume() }
+                        }
+                    }) { overlay() }
+                }
+            }
+            BackHandler(enabled=overlay != null) { moveTaskToBack(true) }
+        }
         showStartupSplash()
     }
 
@@ -68,6 +100,18 @@ class MainActivity : FragmentActivity() {
         super.onStop()
         unlocked = false
         authInProgress = false
+        hideJournal()
+    }
+
+    private fun hideJournal() {
+        // Keep unsaved edits/navigation mounted beneath an opaque, noninteractive lock overlay.
+        screenOverlay = {
+            AuthTheme { language ->
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if(language == AppLanguage.FA) "امروز قفل است" else "Emrooz is locked")
+                }
+            }
+        }
     }
 
     private fun showStartupSplash() {
@@ -77,7 +121,7 @@ class MainActivity : FragmentActivity() {
             val theme = SettingsStore(this@MainActivity).theme.first()
             val light = theme == AppTheme.DAY
             applySystemBars(light)
-            setContent {
+            screenOverlay = {
                 Image(
                     painter = painterResource(if (light) R.drawable.splash_emrooz_light else R.drawable.splash_emrooz_dark),
                     contentDescription = null,
@@ -104,9 +148,14 @@ class MainActivity : FragmentActivity() {
 
     private fun checkLockAndShow() {
         authInProgress = true
+        hideJournal()
         lifecycleScope.launch {
             val settings = SettingsStore(this@MainActivity)
             val enabled = settings.lockEnabled.first()
+            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                authInProgress = false
+                return@launch
+            }
             if (!enabled) {
                 showApp()
                 return@launch
@@ -153,7 +202,7 @@ class MainActivity : FragmentActivity() {
     private fun showPasscodeSetup(store: PasscodeStore) {
         unlocked = false
         authInProgress = false
-        setContent {
+        screenOverlay = {
             AuthTheme { language ->
                 var passcode by remember { mutableStateOf("") }
                 var confirmation by remember { mutableStateOf("") }
@@ -210,7 +259,7 @@ class MainActivity : FragmentActivity() {
     private fun showUnlock(store: PasscodeStore) {
         unlocked = false
         authInProgress = false
-        setContent {
+        screenOverlay = {
             AuthTheme { language ->
                 var passcode by remember { mutableStateOf("") }
                 var error by remember { mutableStateOf("") }
@@ -246,8 +295,14 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showApp() {
+        if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+            unlocked = false
+            authInProgress = false
+            return
+        }
         unlocked = true
         authInProgress = false
-        setContent { NameEmroozApp() }
+        showJournal = true
+        screenOverlay = null
     }
 }

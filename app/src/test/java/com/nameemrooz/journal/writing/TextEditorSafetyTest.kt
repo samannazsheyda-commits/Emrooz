@@ -7,6 +7,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TextEditorSafetyTest {
+    @Test fun verb_half_space_rules_never_match_inside_a_name() {
+        val editor = TextEditor()
+        assertEquals("امروز با امیرمحمد صحبت کردم", editor.live("امروز با امیرمحمد صحبت کردم", "fa-IR"))
+        assertEquals("من می‌رم", editor.live("من میرم", "fa-IR"))
+    }
+    @Test fun english_cleanup_keeps_decimals_urls_and_email_intact() = runBlocking {
+        val text = "Paid 2.1 at 08:30; open https://example.com?q=1.5 or a@b.com"
+        val editor = TextEditor()
+        assertEquals(text, editor.live(text, "en-US"))
+        assertEquals(text, editor.stable(text, "en-US"))
+    }
     @Test fun preserves_emphasis_and_persian_decimal_amounts() {
         val editor = TextEditor()
         assertEquals("خیلی خیلی خسته بودم", editor.live("خیلی خیلی خسته بودم", "fa-IR"))

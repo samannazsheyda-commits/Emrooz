@@ -23,13 +23,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val active = repo.active.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val archived = repo.archived.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun save(text: String) = viewModelScope.launch {
-        val clean = PersianText.clean(text, final = true)
-        if (clean.isNotBlank()) repo.save(clean, "")
-    }
-    fun update(e: JournalEntry) = viewModelScope.launch {
-        val clean = PersianText.clean(e.text, final = true)
-        if (clean.isNotBlank()) repo.update(e.copy(text = clean))
-    }
-    fun delete(e: JournalEntry) = viewModelScope.launch { repo.delete(e) }
+    suspend fun update(e: JournalEntry): Boolean = try {
+        if (e.text.isBlank()) false else { repo.update(e.copy(text = e.text.trim())); true }
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+    catch (_: Exception) { false }
+
+    suspend fun delete(e: JournalEntry): Boolean = try { repo.delete(e); true }
+    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+    catch (_: Exception) { false }
 }

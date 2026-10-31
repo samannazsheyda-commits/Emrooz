@@ -69,6 +69,15 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 3072
           script: gradle --no-daemon -PemroozPreview -PemroozAbi=x86_64 :app:connectedDebugAndroidTest
+      - name: Print Android failure details
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in Path('app/build/outputs/androidTest-results').rglob('*.xml'):
+              print(path)
+              print(path.read_text()[:20000])
+          PY
       - name: Record honest QA status
         run: |
           cat >out/QA.txt <<'EOF'

@@ -147,7 +147,10 @@ val fetchPunctuationModel by tasks.registering {
 
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }
 
-kapt { correctErrorTypes = true }
+kapt {
+    correctErrorTypes = true
+    arguments { arg("room.schemaLocation", "$projectDir/schemas") }
+}
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.02.00"))
@@ -185,5 +188,6 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.test:core-ktx:1.6.1")
 }

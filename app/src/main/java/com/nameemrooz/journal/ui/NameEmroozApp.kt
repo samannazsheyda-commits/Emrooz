@@ -58,6 +58,8 @@ import com.nameemrooz.journal.ui.theme.NameEmroozTheme
 import com.nameemrooz.journal.util.JalaliDate
 import kotlinx.coroutines.launch
 
+private val LocalButtonFeedback = staticCompositionLocalOf<() -> Unit> { {} }
+
 private enum class Screen { HOME, LIST, ARCHIVE, DETAIL, SETTINGS }
 
 private fun AppTheme.faLabel(): String = when (this) {
@@ -72,6 +74,14 @@ fun NameEmroozApp(vm: AppViewModel = viewModel()) {
     val theme by settings.theme.collectAsState(initial = AppTheme.DAY)
     val language by settings.language.collectAsState(initial = AppLanguage.FA)
     val uiScale by settings.uiScale.collectAsState(initial = UiScale.MEDIUM)
+    val sound by settings.soundEnabled.collectAsState(initial=true)
+    val haptics by settings.hapticsEnabled.collectAsState(initial=true)
+    val view = androidx.compose.ui.platform.LocalView.current
+    val buttonFeedback: () -> Unit = {
+        if (sound) view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+        if (haptics) view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+        Unit
+    }
     val active by vm.active.collectAsState()
     val archived by vm.archived.collectAsState()
     var screen by remember { mutableStateOf(Screen.HOME) }
@@ -86,13 +96,15 @@ fun NameEmroozApp(vm: AppViewModel = viewModel()) {
     }
     NameEmroozTheme(theme, language, uiScale) {
         val appDirection = if (language == AppLanguage.FA) LayoutDirection.Rtl else LayoutDirection.Ltr
-        CompositionLocalProvider(LocalLayoutDirection provides appDirection) {
+        CompositionLocalProvider(LocalLayoutDirection provides appDirection, LocalButtonFeedback provides buttonFeedback) {
             Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), color = MaterialTheme.colorScheme.background) {
                 when(screen) {
                     Screen.HOME -> Home(settings, language, vm.draft, { vm.saveDraft() }, { screen=Screen.LIST }, { screen=Screen.SETTINGS }, { selected=it; screen=Screen.DETAIL })
                     Screen.LIST -> Entries(language, false, active, { screen=Screen.HOME }, { selected=it; screen=Screen.DETAIL }, { screen=Screen.ARCHIVE })
                     Screen.ARCHIVE -> Entries(language, true, archived, { screen=Screen.LIST }, { selected=it; screen=Screen.DETAIL }, null)
-                    Screen.DETAIL -> Detail(language, selected, { screen=Screen.LIST }, { vm.update(it); selected=it }, { vm.delete(it); screen=Screen.LIST })
+                    Screen.DETAIL -> Detail(language, selected, { screen=if(selected?.archived==true) Screen.ARCHIVE else Screen.LIST },
+                        { entry -> vm.update(entry).also { if(it) selected=entry } },
+                        { entry -> vm.delete(entry).also { if(it) screen=Screen.LIST } })
                     Screen.SETTINGS -> Settings(settings, { screen=Screen.HOME })
                 }
             }
@@ -103,6 +115,7 @@ fun NameEmroozApp(vm: AppViewModel = viewModel()) {
 @Composable
 private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftController, onSave:suspend ()->Boolean, onList:()->Unit, onSettings:()->Unit, onEntry:(JournalEntry)->Unit) {
     val context = LocalContext.current
+    val buttonFeedback = LocalButtonFeedback.current
     val scope = rememberCoroutineScope()
     var ready by remember { mutableStateOf(false) }
     var listening by remember { mutableStateOf(false) }
@@ -178,6 +191,7 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
         Spacer(Modifier.height(14.dp))
         FilledIconButton(
             onClick={
+                buttonFeedback()
                 error=null
                 if(listening) engine.stop()
                 else if(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) startRecording()
@@ -269,14 +283,16 @@ private fun FixedLanguageSwitch(language: AppLanguage, onChange: (AppLanguage) -
 
 @Composable
 private fun GlassIconButton(onClick:()->Unit, icon: androidx.compose.ui.graphics.vector.ImageVector, description:String) {
-    Surface(onClick=onClick, modifier=Modifier.size(42.dp), shape=RoundedCornerShape(12.dp), color=MaterialTheme.colorScheme.surface.copy(alpha=.68f), border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.7f))) {
+    val feedback = LocalButtonFeedback.current
+    Surface(onClick={ feedback(); onClick() }, modifier=Modifier.size(42.dp), shape=RoundedCornerShape(12.dp), color=MaterialTheme.colorScheme.surface.copy(alpha=.68f), border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.7f))) {
         Box(contentAlignment=Alignment.Center) { Icon(icon, description, tint=MaterialTheme.colorScheme.onSurface) }
     }
 }
 
 @Composable
 private fun ResultAction(label:String, icon:androidx.compose.ui.graphics.vector.ImageVector, modifier:Modifier=Modifier, onClick:()->Unit) {
-    Surface(onClick=onClick, modifier=modifier.height(54.dp), shape=RoundedCornerShape(12.dp), color=MaterialTheme.colorScheme.surface.copy(alpha=.82f), border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.7f))) {
+    val feedback = LocalButtonFeedback.current
+    Surface(onClick={ feedback(); onClick() }, modifier=modifier.height(54.dp), shape=RoundedCornerShape(12.dp), color=MaterialTheme.colorScheme.surface.copy(alpha=.82f), border=BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.7f))) {
         Column(horizontalAlignment=Alignment.CenterHorizontally, verticalArrangement=Arrangement.Center) {
             Icon(icon, null, Modifier.size(19.dp), tint=MaterialTheme.colorScheme.primary)
             Text(label, style=MaterialTheme.typography.labelMedium)
@@ -395,19 +411,41 @@ private fun Detail(
     language: AppLanguage,
     entry: JournalEntry?,
     onBack: () -> Unit,
-    onSave: (JournalEntry) -> Unit,
-    onDelete: (JournalEntry) -> Unit,
+    onSave: suspend (JournalEntry) -> Boolean,
+    onDelete: suspend (JournalEntry) -> Boolean,
 ) {
     if (entry == null) { LaunchedEffect(Unit) { onBack() }; return }
     var text by remember(entry.id) { mutableStateOf(entry.text) }
     var confirmDelete by remember(entry.id) { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var feedback by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    fun saveEntry(value: JournalEntry) {
+        if (saving) return
+        saving=true
+        scope.launch {
+            try {
+                feedback = if (onSave(value)) {
+                    if(language==AppLanguage.FA) "تغییرات ذخیره شد" else "Changes saved"
+                } else if(language==AppLanguage.FA) "ذخیره انجام نشد؛ متن را نگه داشته‌ایم" else "Save failed; your text is still here"
+            } finally { saving=false }
+        }
+    }
     val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text(if(language==AppLanguage.FA) "این نوشته حذف شود؟" else "Delete this note?") },
             text = { Text(if(language==AppLanguage.FA) "بعد از حذف، نوشته قابل برگرداندن نیست." else "This cannot be undone.") },
-            confirmButton = { TextButton(onClick = { confirmDelete=false; onDelete(entry) }) { Text(if(language==AppLanguage.FA) "حذف" else "Delete", color=MaterialTheme.colorScheme.error) } },
+            confirmButton = { TextButton(onClick = {
+                confirmDelete=false
+                saving=true
+                scope.launch {
+                    try {
+                        if (!onDelete(entry)) feedback=if(language==AppLanguage.FA) "حذف انجام نشد" else "Delete failed"
+                    } finally { saving=false }
+                }
+            }) { Text(if(language==AppLanguage.FA) "حذف" else "Delete", color=MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { confirmDelete=false }) { Text(if(language==AppLanguage.FA) "نه" else "Cancel") } },
         )
     }
@@ -429,14 +467,15 @@ private fun Detail(
             shape=RoundedCornerShape(16.dp),
         )
         Spacer(Modifier.height(10.dp))
-        Button(onClick={onSave(entry.copy(text=text))}, Modifier.fillMaxWidth().height(52.dp), shape=RoundedCornerShape(12.dp)) {
+        Button(onClick={saveEntry(entry.copy(text=text))}, modifier=Modifier.fillMaxWidth().height(52.dp), enabled=!saving && text.isNotBlank(), shape=RoundedCornerShape(12.dp)) {
 
             Text(if(language==AppLanguage.FA) "ذخیره تغییرات" else "Save changes")
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
-            TextButton(onClick={onSave(entry.copy(archived=!entry.archived))}) { Text(if(language==AppLanguage.FA) { if(entry.archived) "برگرداندن" else "انتقال به آرشیو" } else { if(entry.archived) "Restore" else "Move to archive" }) }
-            TextButton(onClick={confirmDelete=true}) { Text(if(language==AppLanguage.FA) "حذف" else "Delete", color=MaterialTheme.colorScheme.error) }
+            TextButton(onClick={saveEntry(entry.copy(text=text, archived=!entry.archived))}, enabled=!saving && text.isNotBlank()) { Text(if(language==AppLanguage.FA) { if(entry.archived) "برگرداندن" else "انتقال به آرشیو" } else { if(entry.archived) "Restore" else "Move to archive" }) }
+            TextButton(onClick={confirmDelete=true}, enabled=!saving) { Text(if(language==AppLanguage.FA) "حذف" else "Delete", color=MaterialTheme.colorScheme.error) }
         }
+        feedback?.let { Text(it, style=MaterialTheme.typography.bodySmall) }
     }
 }
 
@@ -670,11 +709,11 @@ private fun SpeechModeOption(
 
 @Composable
 private fun SettingsToggle(label:String, checked:Boolean, icon:androidx.compose.ui.graphics.vector.ImageVector, onChange:(Boolean)->Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min=56.dp).clickable{onChange(!checked)}, verticalAlignment=Alignment.CenterVertically) {
+    val feedback = LocalButtonFeedback.current
+    Row(Modifier.fillMaxWidth().heightIn(min=56.dp).clickable{feedback(); onChange(!checked)}, verticalAlignment=Alignment.CenterVertically) {
         Icon(icon, null, tint=MaterialTheme.colorScheme.primary, modifier=Modifier.size(20.dp))
         Spacer(Modifier.width(11.dp))
         Text(label, Modifier.weight(1f), style=MaterialTheme.typography.bodyMedium)
-        Switch(checked=checked, onCheckedChange=onChange)
+        Switch(checked=checked, onCheckedChange={ feedback(); onChange(it) })
     }
 }
-

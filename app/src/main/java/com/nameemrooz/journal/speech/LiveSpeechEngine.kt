@@ -13,6 +13,9 @@ import com.nameemrooz.journal.util.PersianText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -35,6 +38,7 @@ class LiveSpeechEngine(
     private val onReady: (Boolean) -> Unit,
     private val onError: (String) -> Unit,
     private val onStableText: (String) -> Unit = {},
+    private val recognizerFactory: (Context) -> SpeechDecoder = { ShenavaRnntRecognizer(it) },
 ) : SpeechEngine {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -43,7 +47,7 @@ class LiveSpeechEngine(
     private val stopRequested = AtomicBoolean(false)
     private val preparing = AtomicBoolean(false)
 
-    @Volatile private var recognizer: ShenavaRnntRecognizer? = null
+    @Volatile private var recognizer: SpeechDecoder? = null
     @Volatile private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
     private var segmentJob: Job? = null
@@ -77,7 +81,7 @@ class LiveSpeechEngine(
         emitReady(false)
         scope.launch(Dispatchers.Default) {
             try {
-                val loaded = ShenavaRnntRecognizer(context.applicationContext)
+                val loaded = recognizerFactory(context.applicationContext)
                 synchronized(this@LiveSpeechEngine) {
                     if (!closed.get() && recognizer == null) recognizer = loaded else loaded.close()
                 }
@@ -132,8 +136,8 @@ class LiveSpeechEngine(
             return
         }
 
-        val captureChannel = Channel<ShortArray>(capacity = 32)
-        val decodeChannel = Channel<DecodeRequest>(capacity = 8)
+        val captureChannel = Channel<ShortArray>(capacity = 32, onUndeliveredElement = { Arrays.fill(it, 0.toShort()) })
+        val decodeChannel = Channel<DecodeRequest>(capacity = 8, onUndeliveredElement = { Arrays.fill(it.samples, 0.toShort()) })
         val buffer = AudioWindowBuffer(windowSamples, overlapSamples)
 
         transcript.reset()
@@ -141,7 +145,7 @@ class LiveSpeechEngine(
         running.set(true)
         audioRecord = record
 
-        decodeJob = scope.launch(Dispatchers.Default) {
+        decodeJob = scope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
             try {
                 for (request in decodeChannel) {
                     val floatSamples = FloatArray(request.samples.size)
@@ -162,14 +166,22 @@ class LiveSpeechEngine(
                 val finalText = PersianText.clean(transcript.current(), final = true)
                 if (finalText.isNotBlank()) emitText(finalText)
             } catch (_: Throwable) {
+                stopRequested.set(true)
+                runCatching { record.stop() }
+                captureJob?.cancel()
+                segmentJob?.cancel()
+                captureChannel.cancel()
+                decodeChannel.cancel()
                 if (transcript.current().isBlank()) emitError("تبدیل صدا به متن انجام نشد")
             } finally {
+                // A stopped UI must imply an actually released microphone, even on decoder failure.
+                withContext(NonCancellable) { captureJob?.join() }
                 running.set(false)
                 emitListening(false)
             }
         }
 
-        segmentJob = scope.launch(Dispatchers.Default) {
+        segmentJob = scope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
             var silenceSamples = 0
             var heardSpeech = false
             try {
@@ -214,7 +226,7 @@ class LiveSpeechEngine(
             }
         }
 
-        captureJob = scope.launch(Dispatchers.IO) {
+        captureJob = scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             val readBuffer = ShortArray(2048)
             try {
                 record.startRecording()
@@ -243,6 +255,9 @@ class LiveSpeechEngine(
                 captureChannel.close()
             }
         }
+        decodeJob?.start()
+        segmentJob?.start()
+        captureJob?.start()
     }
 
     override fun stop() {
@@ -263,10 +278,17 @@ class LiveSpeechEngine(
         captureJob?.cancel()
         segmentJob?.cancel()
         decodeJob?.cancel()
-        runCatching { audioRecord?.release() }
-        audioRecord = null
-        runCatching { recognizer?.close() }
+        val recordToClose = audioRecord
+        val loaded = recognizer
         recognizer = null
-        scope.cancel()
+        scope.launch(NonCancellable + Dispatchers.Default) {
+            captureJob?.join()
+            runCatching { recordToClose?.release() }
+            if (audioRecord === recordToClose) audioRecord = null
+            segmentJob?.join()
+            decodeJob?.join()
+            runCatching { loaded?.close() }
+            scope.cancel()
+        }
     }
 }

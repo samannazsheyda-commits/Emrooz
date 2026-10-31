@@ -8,7 +8,7 @@ import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
 
 /** Shenava Koochik v1.5 RNNT INT8. Fully offline; reads model assets directly from the APK. */
-class ShenavaRnntRecognizer(context: Context) : AutoCloseable {
+class ShenavaRnntRecognizer(context: Context) : SpeechDecoder {
     companion object {
         const val MODEL_DIR = "models/shenava_v15_rnnt_int8"
         const val ENCODER = "$MODEL_DIR/encoder.int8.onnx"
@@ -39,7 +39,7 @@ class ShenavaRnntRecognizer(context: Context) : AutoCloseable {
     )
 
     @Synchronized
-    fun transcribe(samples: FloatArray): String {
+    override fun transcribe(samples: FloatArray): String {
         if (samples.isEmpty()) return ""
         val stream = recognizer.createStream()
         return try {

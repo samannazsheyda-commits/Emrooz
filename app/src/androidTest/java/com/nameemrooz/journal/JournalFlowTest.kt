@@ -22,6 +22,7 @@ class JournalFlowTest {
 
     @Before fun prepare() = runBlocking {
         SettingsStore(context).setLock(false)
+        com.nameemrooz.journal.data.AppDatabase.get(context).clearAllTables()
         context.getSharedPreferences("emrooz_draft", Context.MODE_PRIVATE).edit().clear().commit()
         Unit
     }
@@ -56,6 +57,44 @@ class JournalFlowTest {
             val db = com.nameemrooz.journal.data.AppDatabase.get(context)
             val text = runBlocking { db.journalDao().active().first().first().text }
             org.junit.Assert.assertEquals("خیلی خیلی خوشحالم ۱۲٫۵", text)
+        }
+    }
+
+    @Test fun a_locked_return_hides_the_journal_until_authentication() {
+        val secret = "یادداشت خصوصی برای آزمون قفل"
+        context.getSharedPreferences("emrooz_draft", Context.MODE_PRIVATE).edit().putString("text", secret).commit()
+        ActivityScenario.launch(MainActivity::class.java).use { activity ->
+            waitForHome()
+            compose.onNodeWithText(secret).assertIsDisplayed()
+            runBlocking { SettingsStore(context).setLock(true) }
+            activity.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            activity.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("از امروزت بگو").fetchSemanticsNodes().isEmpty()
+            }
+            compose.onNodeWithText(secret).assertDoesNotExist()
+            org.junit.Assert.assertEquals(secret, context.getSharedPreferences("emrooz_draft", Context.MODE_PRIVATE).getString("text", null))
+        }
+    }
+
+    @Test fun backgrounding_keeps_unsaved_detail_edits_and_navigation() {
+        val timestamp = System.currentTimeMillis()
+        runBlocking {
+            com.nameemrooz.journal.data.AppDatabase.get(context).journalDao().insert(
+                com.nameemrooz.journal.model.JournalEntry(title="", text="متن قبلی", createdAt=timestamp)
+            )
+        }
+        ActivityScenario.launch(MainActivity::class.java).use { activity ->
+            waitForHome()
+            compose.onNodeWithText("آرشیو نوشته‌ها").performClick()
+            compose.onNodeWithText(com.nameemrooz.journal.util.JalaliDate.time(timestamp)).performClick()
+            compose.onNode(hasSetTextAction()).performTextReplacement("ویرایش ذخیره‌نشده")
+            activity.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            activity.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("ویرایش ذخیره‌نشده").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNode(hasSetTextAction()).assertTextEquals("ویرایش ذخیره‌نشده")
         }
     }
 }
