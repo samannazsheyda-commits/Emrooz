@@ -9,6 +9,7 @@ The maintained Android application now lives in **`app/`**. The `payload/`, `app
 - Bundled offline Persian Shenava RNNT speech recognition with the corrected `nemo_transducer` profile.
 - Optional Android device speech service, with an explicit disclosure before selecting it.
 - Live transcript, repeated recording appended to the current draft, manual editing, and local draft recovery.
+- Clear or record again with confirmation: the unsaved draft is removed, pending speech/edit results are invalidated, and saved notes are retained.
 - Room-backed notes, edit/archive/restore/delete, and date/time navigation.
 - Persian RTL / English LTR, Abar/Lato fonts, day/night themes and UI size settings.
 - Biometric-first lock with a fallback passcode; journal content is hidden when the app leaves the foreground.
@@ -23,7 +24,23 @@ Use JDK 17, Gradle 8.13 and Android SDK 35 / build tools 35.0.0. Dependencies an
 gradle :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 ```
 
-The production package remains `com.nameemrooz.journal`, with database schema version 1 and version 2.2.2 / code 38. Its release APK is unsigned until the original release key is supplied through a private signing workflow.
+The production package remains `com.nameemrooz.journal`, with database schema version 1 and version 2.2.3 / code 39. Its launcher name is always **امروز**, including separate test installations; label overrides are ignored.
+
+For a signed publication build, supply `EMROOZ_RELEASE_STORE_FILE`,
+`EMROOZ_RELEASE_STORE_PASSWORD`, `EMROOZ_RELEASE_KEY_ALIAS`, and
+`EMROOZ_RELEASE_KEY_PASSWORD` privately, then run:
+
+```bash
+gradle :app:assembleRelease
+python3 tools/verify-installation.py app/build/outputs/apk/release/app-release.apk --build-tools "$ANDROID_HOME/build-tools/35.0.0"
+```
+
+Without these variables the production APK remains unsigned and must not be submitted.
+Updates require the same production signing certificate; do not generate a new key
+for an existing published package. Keep signing keys and passwords outside Git and
+public CI artifacts. The verifier rejects unsigned APKs, the standard Android debug
+certificate, a preview application ID, debug/test-only flags, a wrong launcher name,
+and invalid ZIP alignment. It does not establish acceptance by a store or Play Protect.
 
 Build an independently installable, signed preview without replacing an existing production installation:
 
@@ -37,8 +54,7 @@ For a persistent private preview certificate, set `EMROOZ_PREVIEW_STORE_FILE`,
 `EMROOZ_PREVIEW_STORE_PASSWORD`, `EMROOZ_PREVIEW_KEY_ALIAS`, and
 `EMROOZ_PREVIEW_KEY_PASSWORD` in the build environment. Keep the key and all
 passwords outside Git and public CI artifacts. `-PemroozPreviewApplicationId=...`
-can give a separately signed preview its own package; `-PemroozPreviewLabel=...`
-can distinguish its launcher label. A separate package avoids requiring an
+can give a separately signed preview its own package. A separate package avoids requiring an
 uninstall of a previous preview and losing its local notes.
 
 For an x86_64 emulator and real UI tests:
@@ -51,7 +67,18 @@ The `Emrooz complete Android verification` Actions workflow builds the arm64 pre
 
 ## Google editor availability
 
-The default is enabled; Settings includes **ویراستاری دقیق‌تر با مدل روی دستگاه / Enhanced on-device editing**. Emrooz displays the model's runtime availability. Device AICore services may need to provision/download the model separately. Unsupported or unavailable models leave the local editor active. No cloud editing fallback or API key is used.
+The default is enabled; Settings includes **ویراستاری با جمینای نانو / Gemini Nano editing**. Emrooz displays the model's runtime availability. Device AICore services may need to provision/download the model separately. Unsupported or unavailable models leave the local editor active. No cloud editing fallback or API key is used.
+
+## Installation and Play Protect
+
+CI installs and launches the release variant on API 26 and 35 emulators before
+running the journal instrumentation suite. These emulators do not establish
+Play Protect reputation or store approval. An unknown-app scan recommendation is
+different from a malformed APK, certificate conflict, or a harmful-app block.
+See Google's [developer guidance for Play Protect warnings](https://developers.google.com/android/play-protect/warning-dev-guidance).
+Investigate the exact warning before treating it as an APK defect. A valid private
+release certificate is necessary for publication but cannot guarantee that Google
+will never request a scan. No installation bypass or Play Protect disabling is used.
 
 Successful Gemini Nano inference and Persian correction quality must be validated on a supported physical device. Emulator fallback tests and a successful build do not establish hardware support or actual Nano inference quality.
 

@@ -44,7 +44,7 @@ class JournalFlowTest {
             compose.onNodeWithText("نوشتن با صفحه‌کلید").performClick()
             compose.onNode(hasSetTextAction()).performTextInput("خیلی خیلی خوشحالم ۱۲٫۵")
             compose.onNodeWithContentDescription("منو").performClick()
-            compose.onNodeWithText("ویراستاری دقیق‌تر با مدل روی دستگاه").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("ویراستاری با جمینای نانو").performScrollTo().assertIsDisplayed()
             compose.onNodeWithContentDescription("برگشت").assertIsDisplayed().performClick()
             waitForHome()
             assertDraftVisible("خیلی خیلی خوشحالم ۱۲٫۵")
@@ -63,6 +63,25 @@ class JournalFlowTest {
             val db = com.nameemrooz.journal.data.AppDatabase.get(context)
             val text = runBlocking { db.journalDao().active().first().first().text }
             org.junit.Assert.assertEquals("خیلی خیلی خوشحالم ۱۲٫۵", text)
+        }
+    }
+
+    @Test fun clear_requires_confirmation_and_stays_empty_after_recreation() {
+        ActivityScenario.launch(MainActivity::class.java).use { activity ->
+            waitForHome()
+            compose.onNodeWithText("نوشتن با صفحه‌کلید").performClick()
+            compose.onNode(hasSetTextAction()).performTextInput("نوشتهٔ قابل پاک کردن")
+            compose.onNodeWithText("پاک کردن").performClick()
+            compose.onNodeWithText("انصراف").performClick()
+            compose.onNode(hasSetTextAction()).assertTextEquals("نوشتهٔ قابل پاک کردن")
+            compose.onNodeWithText("پاک کردن").performClick()
+            compose.onAllNodesWithText("پاک کردن").onLast().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("نوشتن با صفحه‌کلید").fetchSemanticsNodes().isNotEmpty() }
+            org.junit.Assert.assertEquals("", context.getSharedPreferences("emrooz_draft", Context.MODE_PRIVATE).getString("text", null))
+            activity.recreate()
+            waitForHome()
+            compose.onNodeWithText("نوشتهٔ قابل پاک کردن").assertDoesNotExist()
+            compose.onNodeWithText("نوشتن با صفحه‌کلید").assertIsDisplayed()
         }
     }
 

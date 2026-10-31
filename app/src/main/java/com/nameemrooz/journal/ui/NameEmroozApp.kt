@@ -132,6 +132,10 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
     var recordingToken by remember { mutableLongStateOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf(false) }
+    var resetAction by remember { mutableStateOf<Boolean?>(null) }
+    var restartWhenReady by remember { mutableStateOf(false) }
+    var permissionRequested by remember { mutableStateOf(false) }
+    val interactive = LocalJournalInteractive.current
     val speechMode by store.speechMode.collectAsState(initial = SpeechMode.PRIVATE_OFFLINE)
     val enhancedEditing by store.enhancedOnDeviceEditingEnabled.collectAsState(initial = true)
     val clearClipboard by store.clearClipboardEnabled.collectAsState(initial = true)
@@ -152,9 +156,15 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
     LaunchedEffect(engine) { engine.prepare() }
     DisposableEffect(engine) { onDispose { engine.close() } }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
     DisposableEffect(engine, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) engine.stop()
+            if (event == Lifecycle.Event.ON_STOP) {
+                restartWhenReady = false
+                permissionRequested = false
+                resetAction = null
+                engine.stop()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -166,7 +176,48 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
     }
 
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startRecording() else error = if(language==AppLanguage.FA) "اجازه‌ی میکروفون داده نشد" else "Microphone permission was not granted"
+        val requested = permissionRequested
+        permissionRequested = false
+        if (granted && requested && interactive) restartWhenReady = true
+        else if (!granted && requested) error = if(language==AppLanguage.FA) "اجازه‌ی میکروفون داده نشد" else "Microphone permission was not granted"
+    }
+
+    LaunchedEffect(ready, restartWhenReady, interactive, lifecycleState) {
+        if (!interactive) {
+            restartWhenReady = false
+            permissionRequested = false
+            resetAction = null
+        } else if (ready && restartWhenReady && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) {
+            restartWhenReady = false
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startRecording()
+            else {
+                permissionRequested = true
+                micPermission.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    if (resetAction != null && interactive) {
+        AlertDialog(
+            onDismissRequest = { resetAction = null },
+            title = { Text(if(language==AppLanguage.FA) "نوشتهٔ فعلی پاک شود؟" else "Clear the current draft?") },
+            text = { Text(if(language==AppLanguage.FA) "نوشتهٔ ذخیره‌نشده پاک می‌شود. نوشته‌های ذخیره‌شده باقی می‌مانند." else "This clears the unsaved draft. Saved notes are kept.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val recordAgain = resetAction == true
+                    resetAction = null
+                    engine.discard()
+                    draft.clear()
+                    editing = false
+                    error = null
+                    restartWhenReady = recordAgain
+                }) {
+                    Text(if(resetAction == true) { if(language==AppLanguage.FA) "پاک کردن و ضبط دوباره" else "Clear and record again" }
+                        else { if(language==AppLanguage.FA) "پاک کردن" else "Clear" })
+                }
+            },
+            dismissButton = { TextButton(onClick = { resetAction = null }) { Text(if(language==AppLanguage.FA) "انصراف" else "Cancel") } },
+        )
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal=20.dp, vertical=10.dp), horizontalAlignment=Alignment.CenterHorizontally) {
@@ -203,7 +254,10 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
                 error=null
                 if(listening) engine.stop()
                 else if(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) startRecording()
-                else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                else {
+                    permissionRequested = true
+                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                }
             },
             enabled=ready && !saving,
             modifier=Modifier.size(78.dp), shape=CircleShape,
@@ -231,6 +285,12 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
         if (text.isBlank() && !listening && !editing) {
             TextButton(onClick={ editing=true }) {
                 Text(if(language==AppLanguage.FA) "نوشتن با صفحه‌کلید" else "Write with keyboard")
+            }
+        }
+        if ((text.isNotBlank() || listening) && !saving) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceEvenly) {
+                TextButton(onClick={ resetAction=false }) { Text(if(language==AppLanguage.FA) "پاک کردن" else "Clear") }
+                TextButton(onClick={ resetAction=true }, enabled=ready) { Text(if(language==AppLanguage.FA) "ضبط دوباره" else "Record again") }
             }
         }
         TextButton(onClick=onList, enabled=!listening && !saving) { Text(if(language==AppLanguage.FA) "آرشیو نوشته‌ها" else "Notes archive") }
@@ -628,7 +688,7 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
         Spacer(Modifier.height(10.dp))
         SettingsCard {
             SettingsToggle(
-                if(language==AppLanguage.FA) "ویراستاری دقیق‌تر با مدل روی دستگاه" else "Enhanced on-device editing",
+                if(language==AppLanguage.FA) "ویراستاری با جمینای نانو" else "Gemini Nano editing",
                 enhancedEditing,
                 Icons.Default.AutoFixHigh,
             ) { enabled -> scope.launch { store.setEnhancedOnDeviceEditingEnabled(enabled) } }

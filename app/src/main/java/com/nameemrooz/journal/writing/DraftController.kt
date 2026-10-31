@@ -28,6 +28,12 @@ class DraftController(initial: String, private val persist: (String) -> Unit) {
         update(text)
     }
 
+    /** Clear the persisted draft and reject every callback from its recording. */
+    fun clear() {
+        prefix = ""
+        edit("")
+    }
+
     private fun update(text: String) {
         revision++
         mutableText.value = text

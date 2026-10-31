@@ -16,13 +16,12 @@ android {
         applicationId = "com.nameemrooz.journal"
         minSdk = 26
         targetSdk = 35
-        versionCode = 38
-        versionName = "2.2.2"
+        versionCode = 39
+        versionName = "2.2.3"
         manifestPlaceholders["applicationLabel"] = "امروز"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         if (providers.gradleProperty("emroozPreview").isPresent) {
             applicationId = providers.gradleProperty("emroozPreviewApplicationId").getOrElse("com.nameemrooz.journal.preview")
-            manifestPlaceholders["applicationLabel"] = providers.gradleProperty("emroozPreviewLabel").getOrElse("امروز آزمایشی")
         }
 
         ndk {
@@ -40,9 +39,28 @@ android {
         }
     }
 
+    // Publishing must use a private, persistent release key, never the CI debug key.
+    providers.environmentVariable("EMROOZ_RELEASE_STORE_FILE").orNull?.let { releaseStore ->
+        signingConfigs.create("publication") {
+            storeFile = file(releaseStore)
+            storePassword = providers.environmentVariable("EMROOZ_RELEASE_STORE_PASSWORD").get()
+            keyAlias = providers.environmentVariable("EMROOZ_RELEASE_KEY_ALIAS").get()
+            keyPassword = providers.environmentVariable("EMROOZ_RELEASE_KEY_PASSWORD").get()
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
+    }
+
     buildTypes {
         release {
-            if (providers.gradleProperty("emroozPreview").isPresent) signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            isJniDebuggable = false
+            signingConfig = if (providers.gradleProperty("emroozPreview").isPresent) {
+                signingConfigs.getByName("debug")
+            } else {
+                signingConfigs.findByName("publication")
+            }
         }
     }
 

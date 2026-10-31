@@ -25,7 +25,7 @@ class NanoSettingsTest {
         ActivityScenario.launch(MainActivity::class.java).use { activity ->
             compose.waitUntil(30_000) { compose.onAllNodesWithText("از امروزت بگو").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("منو").performClick()
-            compose.onNodeWithText("ویراستاری دقیق‌تر با مدل روی دستگاه").performScrollTo().performClick()
+            compose.onNodeWithText("ویراستاری با جمینای نانو").performScrollTo().performClick()
             val terminalStatuses = listOf(
                 "مدل گوگل آماده است",
                 "مدل گوگل فعلاً در دسترس نیست؛ ویراستار محلی فعال است",

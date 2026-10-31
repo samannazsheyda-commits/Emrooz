@@ -96,6 +96,26 @@ class HybridSpeechController(
         activeEngine?.stop()
     }
 
+    /** Unlike stop(), discard never flushes a final transcript into the next draft. */
+    fun discard() {
+        if (closed.get()) return
+        engineEpoch++
+        sessionRequested = false
+        pendingFallbackStart = false
+        fallbackUsed = false
+        editingJob?.cancel()
+        edits.reset()
+        activeEngine?.close()
+        activeEngine = null
+        carryPrefix = ""
+        rawCurrent = ""
+        normalizedCurrent = ""
+        activeMode = configuredMode
+        onListening(false)
+        onReady(false)
+        prepare()
+    }
+
     private fun createEngine(mode: SpeechMode): SpeechEngine {
         val epoch = ++engineEpoch
         val textCallback: (String) -> Unit = text@{ candidate ->
@@ -156,7 +176,7 @@ class HybridSpeechController(
                 onListening = listeningCallback,
                 onReady = readyCallback,
                 onError = { if (!closed.get() && epoch == engineEpoch) onError(it) },
-                onFallbackRequested = { reason -> fallbackToOffline(reason) },
+                onFallbackRequested = { reason -> if (!closed.get() && epoch == engineEpoch) fallbackToOffline(reason) },
                 onStableText = stableCallback,
             )
         }
