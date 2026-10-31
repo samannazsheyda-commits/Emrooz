@@ -16,17 +16,27 @@ android {
         applicationId = "com.nameemrooz.journal"
         minSdk = 26
         targetSdk = 35
-        versionCode = 36
-        versionName = "2.2.0"
+        versionCode = 37
+        versionName = "2.2.1"
         manifestPlaceholders["applicationLabel"] = "امروز"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         if (providers.gradleProperty("emroozPreview").isPresent) {
-            applicationId = "com.nameemrooz.journal.preview"
-            manifestPlaceholders["applicationLabel"] = "امروز آزمایشی"
+            applicationId = providers.gradleProperty("emroozPreviewApplicationId").getOrElse("com.nameemrooz.journal.preview")
+            manifestPlaceholders["applicationLabel"] = providers.gradleProperty("emroozPreviewLabel").getOrElse("امروز آزمایشی")
         }
 
         ndk {
             abiFilters += listOf(providers.gradleProperty("emroozAbi").getOrElse("arm64-v8a"))
+        }
+    }
+
+    // A private persistent preview key may be supplied without putting secrets in git.
+    providers.environmentVariable("EMROOZ_PREVIEW_STORE_FILE").orNull?.let { previewStore ->
+        signingConfigs.getByName("debug") {
+            storeFile = file(previewStore)
+            storePassword = providers.environmentVariable("EMROOZ_PREVIEW_STORE_PASSWORD").get()
+            keyAlias = providers.environmentVariable("EMROOZ_PREVIEW_KEY_ALIAS").get()
+            keyPassword = providers.environmentVariable("EMROOZ_PREVIEW_KEY_PASSWORD").get()
         }
     }
 
@@ -178,9 +188,9 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("io.github.eix128:sentencepiece4j:1.0.2")
 
-    implementation("com.google.mlkit:genai-prompt:1.0.0-beta4") {
-        exclude(group = "com.google.android.datatransport", module = "transport-backend-cct")
-    }
+    // ML Kit links CCTDestination during client initialization. Keep its runtime
+    // dependency; remove INTERNET in our manifest instead of breaking the SDK.
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")

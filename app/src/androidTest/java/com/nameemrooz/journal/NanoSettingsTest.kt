@@ -26,8 +26,15 @@ class NanoSettingsTest {
             compose.waitUntil(30_000) { compose.onAllNodesWithText("از امروزت بگو").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("منو").performClick()
             compose.onNodeWithText("ویراستاری دقیق‌تر با مدل روی دستگاه").performScrollTo().performClick()
+            val terminalStatuses = listOf(
+                "مدل گوگل آماده است",
+                "مدل گوگل فعلاً در دسترس نیست؛ ویراستار محلی فعال است",
+                "مدل گوگل فعلاً روی این گوشی در دسترس نیست؛ ویراستار محلی فعال است",
+                "مدل در حال دانلود است؛ ویراستار محلی فعال است",
+                "مدل به دانلود نیاز دارد؛ با اولین نوشته آماده‌سازی آغاز می‌شود",
+            )
             compose.waitUntil(20_000) {
-                compose.onAllNodes(hasText("مدل گوگل", substring = true) and hasText("در حال بررسی", substring = true).not()).fetchSemanticsNodes().isNotEmpty()
+                terminalStatuses.any { compose.onAllNodesWithText(it).fetchSemanticsNodes().isNotEmpty() }
             }
             assertTrue(runBlocking { SettingsStore(context).enhancedOnDeviceEditingEnabled.first() })
             compose.onNodeWithContentDescription("برگشت").performClick()

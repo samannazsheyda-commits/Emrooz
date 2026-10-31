@@ -19,6 +19,10 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [26, 35]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -42,15 +46,15 @@ jobs:
       - name: Verify APK, privacy and model integrity
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/Emrooz-2.2.0-Nano-Preview-arm64.apk
-          python3 tools/verify-apk.py out/Emrooz-2.2.0-Nano-Preview-arm64.apk
+          cp app/build/outputs/apk/release/app-release.apk out/Emrooz-2.2.1-Nano-Preview-arm64.apk
+          python3 tools/verify-apk.py out/Emrooz-2.2.1-Nano-Preview-arm64.apk
           BT="$ANDROID_HOME/build-tools/35.0.0"
           "$BT/apksigner" verify --verbose --print-certs out/*.apk >out/signature.txt
           "$BT/zipalign" -c -v 4 out/*.apk >out/alignment.txt
           "$BT/aapt" dump permissions out/*.apk >out/permissions.txt
           "$BT/aapt" dump badging out/*.apk >out/badging.txt
           ! grep -q android.permission.INTERNET out/permissions.txt
-          grep -q "versionCode='36' versionName='2.2.0'" out/badging.txt
+          grep -q "versionCode='37' versionName='2.2.1'" out/badging.txt
           grep -q "package: name='com.nameemrooz.journal.preview'" out/badging.txt
           sha256sum out/*.apk >out/sha256.txt
       - name: Build emulator and real UI tests
@@ -63,7 +67,7 @@ jobs:
       - name: Android journal flow and lifecycle verification
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: ${{ matrix.api }}
           arch: x86_64
           profile: pixel_6
           disable-animations: true
@@ -81,9 +85,9 @@ jobs:
       - name: Record honest QA status
         run: |
           cat >out/QA.txt <<'EOF'
-          Emrooz 2.2.0 preview
+          Emrooz 2.2.1 preview
           Unit tests, release lint/build, signatures, alignment, privacy/model checks and Android journal UI flow passed.
-          Gemini Nano is opt-in, on-device and lazy; unsupported/error/timeout fallback is tested.
+          Google editing is enabled by default, on-device and lazy; unsupported/error/timeout fallback is tested.
           Successful Nano inference still requires supported physical-device validation.
           This preview uses a separate application ID and a CI debug certificate. It does not replace the installed production app or its notes.
           A production update requires the original signing key; no signing key is included in the artifacts.
@@ -91,7 +95,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Emrooz-2.2.0-preview-and-verification
+          name: Emrooz-2.2.1-api-${{ matrix.api }}-preview-and-verification
           path: |
             out/
             app/build/reports/tests/

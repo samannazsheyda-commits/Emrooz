@@ -10,7 +10,7 @@ MAIN=app/src/main/java/com/nameemrooz/journal
 TEST=app/src/test/java/com/nameemrooz/journal
 java com.sun.tools.javac.Main -d "$OUT" "$MAIN/util/PersianEditorial.java" "$MAIN/speech/StableTranscriptMerger.java" "$MAIN/speech/PersonalVocabulary.java" "$MAIN/speech/RnntModelSpec.java"
 mapfile -t SOURCES < <(find "$MAIN/writing" -name '*.kt' ! -name LocalPunctuationModel.kt ! -name MlKitNanoPromptClient.kt)
-mapfile -t TESTS < <(find "$TEST/writing" -name '*Test.kt')
+mapfile -t TESTS < <(find "$TEST/writing" -name '*Test.kt' ! -name MlKitRuntimeDependencyTest.kt)
 java -cp "$LIB/*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect -classpath "$CP" -d "$OUT" "${SOURCES[@]}" "${TESTS[@]}"
-mapfile -t CLASSES < <(find "$TEST/writing" -name '*Test.kt' -printf '%f\n' | sed 's/\.kt$//;s/^/com.nameemrooz.journal.writing./')
+mapfile -t CLASSES < <(find "$TEST/writing" -name '*Test.kt' ! -name MlKitRuntimeDependencyTest.kt -printf '%f\n' | sed 's/\.kt$//;s/^/com.nameemrooz.journal.writing./')
 java -cp "$CP" org.junit.runner.JUnitCore "${CLASSES[@]}"

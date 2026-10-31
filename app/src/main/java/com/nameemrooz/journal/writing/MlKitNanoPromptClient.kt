@@ -35,6 +35,8 @@ class MlKitNanoPromptClient : NanoPromptClient {
                     throw e
                 } catch (_: Exception) {
                     // Provisioning is optional. A failed download must not crash the journal.
+                } catch (_: LinkageError) {
+                    // Keep optional SDK linkage failures away from the journal scope.
                 } finally {
                     downloadRequested.set(false)
                 }

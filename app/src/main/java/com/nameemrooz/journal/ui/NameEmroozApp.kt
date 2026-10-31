@@ -18,6 +18,7 @@ import com.nameemrooz.journal.writing.MlKitNanoPromptClient
 import com.nameemrooz.journal.writing.NanoStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import androidx.activity.result.contract.ActivityResultContracts
@@ -132,7 +133,7 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
     var error by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf(false) }
     val speechMode by store.speechMode.collectAsState(initial = SpeechMode.PRIVATE_OFFLINE)
-    val enhancedEditing by store.enhancedOnDeviceEditingEnabled.collectAsState(initial = false)
+    val enhancedEditing by store.enhancedOnDeviceEditingEnabled.collectAsState(initial = true)
     val clearClipboard by store.clearClipboardEnabled.collectAsState(initial = true)
     val languageTag = if (language == AppLanguage.FA) "fa-IR" else "en-US"
 
@@ -498,7 +499,7 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
     val uiScale by store.uiScale.collectAsState(initial=UiScale.MEDIUM)
     val speechMode by store.speechMode.collectAsState(initial=SpeechMode.PRIVATE_OFFLINE)
     val disclosureAccepted by store.highAccuracyDisclosureAccepted.collectAsState(initial=false)
-    val enhancedEditing by store.enhancedOnDeviceEditingEnabled.collectAsState(initial=false)
+    val enhancedEditing by store.enhancedOnDeviceEditingEnabled.collectAsState(initial=true)
     var nanoStatus by remember { mutableStateOf<NanoStatus?>(null) }
     var nanoCheckFailed by remember { mutableStateOf(false) }
     LaunchedEffect(enhancedEditing) {
@@ -509,15 +510,19 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
                 withContext(Dispatchers.IO) {
                     MlKitNanoPromptClient().use { client ->
                         do {
-                            val status = client.status()
-                            withContext(Dispatchers.Main) { nanoStatus = status }
-                            if (status == NanoStatus.AVAILABLE || status == NanoStatus.UNAVAILABLE) break
+                            val status = withTimeoutOrNull(2500) { client.status() }
+                            withContext(Dispatchers.Main) {
+                                nanoStatus = status
+                                nanoCheckFailed = status == null
+                            }
+                            if (status == null || status == NanoStatus.AVAILABLE || status == NanoStatus.UNAVAILABLE) break
                             delay(3000)
                         } while (true)
                     }
                 }
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { nanoCheckFailed = true }
+            catch (_: LinkageError) { nanoCheckFailed = true }
         }
     }
     val systemSpeechAvailable = remember { SystemSpeechEngine.isAvailable(context) }
@@ -642,7 +647,7 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
                 nanoStatus == NanoStatus.AVAILABLE -> if(language==AppLanguage.FA) "مدل گوگل آماده است" else "Google model is ready"
                 nanoStatus == NanoStatus.DOWNLOADING -> if(language==AppLanguage.FA) "مدل در حال دانلود است؛ ویراستار محلی فعال است" else "Model downloading; local editing is active"
                 nanoStatus == NanoStatus.DOWNLOADABLE -> if(language==AppLanguage.FA) "مدل به دانلود نیاز دارد؛ با اولین نوشته آماده‌سازی آغاز می‌شود" else "Model download needed; provisioning starts with your first transcript"
-                nanoStatus == NanoStatus.UNAVAILABLE -> if(language==AppLanguage.FA) "این گوشی از مدل گوگل پشتیبانی نمی‌کند؛ ویراستار محلی فعال است" else "Google model is unsupported on this device; local editing is active"
+                nanoStatus == NanoStatus.UNAVAILABLE -> if(language==AppLanguage.FA) "مدل گوگل فعلاً روی این گوشی در دسترس نیست؛ ویراستار محلی فعال است" else "Google model unavailable on this device; local editing is active"
                 else -> if(language==AppLanguage.FA) "در حال بررسی مدل گوگل…" else "Checking Google model…"
             }
             Text(statusText, Modifier.fillMaxWidth().padding(vertical=8.dp), textAlign=align, style=MaterialTheme.typography.bodySmall)

@@ -15,6 +15,7 @@ EXPECTED = {
 
 with zipfile.ZipFile(sys.argv[1]) as apk:
     assert apk.testzip() is None, 'Corrupt APK'
+    assert not any(name.endswith('.part') for name in apk.namelist()), 'Partial download packaged'
     abis = {name.split('/')[1] for name in apk.namelist() if name.startswith('lib/')}
     assert abis == {'arm64-v8a'}, f'Unexpected ABIs: {abis}'
     for name, digest in EXPECTED.items():

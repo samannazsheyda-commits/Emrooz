@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -128,12 +129,20 @@ class MainActivity : FragmentActivity() {
             val light = theme == AppTheme.DAY
             applySystemBars(light)
             screenOverlay = {
-                Image(
-                    painter = painterResource(if (light) R.drawable.splash_emrooz_light else R.drawable.splash_emrooz_dark),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.FillBounds,
-                )
+                Box(
+                    Modifier.fillMaxSize().background(
+                        androidx.compose.ui.graphics.Color(if (light) 0xFFF7F2EA else 0xFF0D1726)
+                    ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // Keep the supplied artwork's proportions on every screen shape.
+                    Image(
+                        painter = painterResource(if (light) R.drawable.splash_emrooz_light else R.drawable.splash_emrooz_dark),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
             }
             delay(1250)
             startupSplashVisible = false
