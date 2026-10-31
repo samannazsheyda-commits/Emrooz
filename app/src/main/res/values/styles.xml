@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.NameEmrooz.Base" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">@bool/splash_light_system_bars</item>
+        <item name="android:navigationBarColor">@color/splash_background</item>
+        <item name="android:statusBarColor">@color/splash_background</item>
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+    <style name="Theme.NameEmrooz" parent="Theme.NameEmrooz.Base" />
+</resources>

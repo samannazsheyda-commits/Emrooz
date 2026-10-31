@@ -1,0 +1,44 @@
+name: Diagnose v2.0.4 Voice Edit String
+
+on:
+  push:
+    branches: [work/gemini-nano-editor-v204]
+    paths:
+      - '.github/workflows/diagnose-v204-voice-edit-string.yml'
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and locate exact string
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz
+          tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+          MAIN=/tmp/emrooz/app/src/main/java/com/nameemrooz/journal
+          cp approved_ui/Theme.kt "$MAIN/ui/theme/Theme.kt"
+          cp approved_ui/AppViewModel.kt "$MAIN/ui/AppViewModel.kt"
+          cp approved_ui/BiometricGate.kt "$MAIN/privacy/BiometricGate.kt"
+          cp approved_ui/MainActivity.kt "$MAIN/MainActivity.kt"
+          cp hybrid_v204/SettingsStore.kt "$MAIN/data/SettingsStore.kt"
+          for f in SpeechMode.kt SpeechEngine.kt SystemSpeechErrorPolicy.kt SystemSpeechEngine.kt TranscriptContinuity.kt LiveSpeechEngine.kt; do cp "hybrid_v203/$f" "$MAIN/speech/$f"; done
+          cp hybrid_v204/HybridSpeechController.kt "$MAIN/speech/HybridSpeechController.kt"
+          mkdir -p "$MAIN/writing"
+          for f in PunctuationRestorer.kt LexicalSafety.kt TextEditor.kt StableDisplayComposer.kt LocalPunctuationModel.kt; do cp "hybrid_v203/$f" "$MAIN/writing/$f"; done
+          for f in WritingEnhancer.kt WritingEditSafety.kt NanoPromptClient.kt MlKitNanoPromptClient.kt GeminiNanoWritingEnhancer.kt LocalWritingEnhancer.kt WritingEnhancementCoordinator.kt; do cp "hybrid_v204/$f" "$MAIN/writing/$f"; done
+          {
+            cat hybrid_v204/NameEmroozApp.part00; printf '\n'
+            cat hybrid_v203/NameEmroozApp.part01; printf '\n'
+            cat hybrid_v203/NameEmroozApp.part02; printf '\n'
+            cat hybrid_v204/NameEmroozApp.part03; printf '\n'
+            cat hybrid_v203/NameEmroozApp.part04; printf '\n'
+          } > "$MAIN/ui/NameEmroozApp.kt"
+          echo '=== exact removed command matches ==='
+          grep -R -n --include='*.kt' --include='*.java' 'اصلاح کن' /tmp/emrooz/app/src/main/java || true
