@@ -8,6 +8,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -74,8 +76,12 @@ class MainActivity : FragmentActivity() {
             }
             Box(Modifier.fillMaxSize()) {
                 if (showJournal) {
-                    Box(if (overlay != null) Modifier.clearAndSetSemantics { } else Modifier) {
-                        NameEmroozApp()
+                    val journalModifier = Modifier
+                        .focusProperties { canFocus = overlay == null }
+                        .onPreviewKeyEvent { overlay != null }
+                        .then(if (overlay != null) Modifier.clearAndSetSemantics { } else Modifier)
+                    Box(journalModifier) {
+                        NameEmroozApp(interactive = overlay == null)
                     }
                 }
                 if (overlay != null) {

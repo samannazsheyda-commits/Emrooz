@@ -33,6 +33,11 @@ class JournalFlowTest {
         }
     }
 
+    private fun assertDraftVisible(text: String) {
+        compose.waitUntil(5_000) { compose.onNodeWithText(text).isDisplayed() }
+        compose.onNodeWithText(text).assertIsDisplayed()
+    }
+
     @Test fun draft_survives_settings_and_activity_recreation_then_saves_to_room() {
         ActivityScenario.launch(MainActivity::class.java).use { activity ->
             waitForHome()
@@ -41,10 +46,10 @@ class JournalFlowTest {
             compose.onNodeWithContentDescription("منو").performClick()
             compose.onNodeWithText("ویراستاری دقیق‌تر با مدل روی دستگاه").performScrollTo().assertIsDisplayed()
             compose.onNodeWithContentDescription("برگشت").performClick()
-            compose.onNodeWithText("خیلی خیلی خوشحالم ۱۲٫۵").assertIsDisplayed()
+            assertDraftVisible("خیلی خیلی خوشحالم ۱۲٫۵")
             activity.recreate()
             waitForHome()
-            compose.onNodeWithText("خیلی خیلی خوشحالم ۱۲٫۵").assertIsDisplayed()
+            assertDraftVisible("خیلی خیلی خوشحالم ۱۲٫۵")
             compose.onNodeWithText("ذخیره").performClick()
             compose.waitUntil(10_000) {
                 compose.onAllNodesWithText("نوشتن با صفحه‌کلید").fetchSemanticsNodes().isNotEmpty()
@@ -95,6 +100,30 @@ class JournalFlowTest {
                 compose.onAllNodesWithText("ویرایش ذخیره‌نشده").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNode(hasSetTextAction()).assertTextEquals("ویرایش ذخیره‌نشده")
+        }
+    }
+
+    @Test fun locked_return_suppresses_delete_dialog_and_keyboard_actions() {
+        val timestamp = System.currentTimeMillis()
+        val db = com.nameemrooz.journal.data.AppDatabase.get(context)
+        val id = runBlocking { db.journalDao().insert(com.nameemrooz.journal.model.JournalEntry(title="", text="نوشتهٔ محفوظ", createdAt=timestamp)) }
+        ActivityScenario.launch(MainActivity::class.java).use { activity ->
+            waitForHome()
+            compose.onNodeWithText("آرشیو نوشته‌ها").performClick()
+            compose.onNodeWithText(com.nameemrooz.journal.util.JalaliDate.time(timestamp)).performClick()
+            compose.onNodeWithText("حذف").performClick()
+            compose.onNodeWithText("این نوشته حذف شود؟").assertIsDisplayed()
+            runBlocking { SettingsStore(context).setLock(true) }
+            activity.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            activity.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("این نوشته حذف شود؟").fetchSemanticsNodes().isEmpty()
+            }
+            val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_TAB)
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_ENTER)
+            compose.onNodeWithText("این نوشته حذف شود؟").assertDoesNotExist()
+            org.junit.Assert.assertNotNull(runBlocking { db.journalDao().byId(id) })
         }
     }
 }

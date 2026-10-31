@@ -59,6 +59,7 @@ import com.nameemrooz.journal.util.JalaliDate
 import kotlinx.coroutines.launch
 
 private val LocalButtonFeedback = staticCompositionLocalOf<() -> Unit> { {} }
+private val LocalJournalInteractive = staticCompositionLocalOf { true }
 
 private enum class Screen { HOME, LIST, ARCHIVE, DETAIL, SETTINGS }
 
@@ -68,7 +69,7 @@ private fun AppTheme.faLabel(): String = when (this) {
 }
 
 @Composable
-fun NameEmroozApp(vm: AppViewModel = viewModel()) {
+fun NameEmroozApp(vm: AppViewModel = viewModel(), interactive: Boolean = true) {
     val context = LocalContext.current
     val settings = remember { SettingsStore(context) }
     val theme by settings.theme.collectAsState(initial = AppTheme.DAY)
@@ -86,6 +87,12 @@ fun NameEmroozApp(vm: AppViewModel = viewModel()) {
     val archived by vm.archived.collectAsState()
     var screen by remember { mutableStateOf(Screen.HOME) }
     var selected by remember { mutableStateOf<JournalEntry?>(null) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    LaunchedEffect(screen) {
+        focusManager.clearFocus(force=true)
+        keyboard?.hide()
+    }
 
     BackHandler(enabled = screen != Screen.HOME) {
         screen = when (screen) {
@@ -96,7 +103,7 @@ fun NameEmroozApp(vm: AppViewModel = viewModel()) {
     }
     NameEmroozTheme(theme, language, uiScale) {
         val appDirection = if (language == AppLanguage.FA) LayoutDirection.Rtl else LayoutDirection.Ltr
-        CompositionLocalProvider(LocalLayoutDirection provides appDirection, LocalButtonFeedback provides buttonFeedback) {
+        CompositionLocalProvider(LocalLayoutDirection provides appDirection, LocalButtonFeedback provides buttonFeedback, LocalJournalInteractive provides interactive) {
             Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), color = MaterialTheme.colorScheme.background) {
                 when(screen) {
                     Screen.HOME -> Home(settings, language, vm.draft, { vm.saveDraft() }, { screen=Screen.LIST }, { screen=Screen.SETTINGS }, { selected=it; screen=Screen.DETAIL })
@@ -432,7 +439,7 @@ private fun Detail(
         }
     }
     val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left
-    if (confirmDelete) {
+    if (confirmDelete && LocalJournalInteractive.current) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text(if(language==AppLanguage.FA) "این نوشته حذف شود؟" else "Delete this note?") },
@@ -523,7 +530,7 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
     val clearClipboard by store.clearClipboardEnabled.collectAsState(initial=true)
     val align = if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left
 
-    if (showSpeechDisclosure) {
+    if (showSpeechDisclosure && LocalJournalInteractive.current) {
         AlertDialog(
             onDismissRequest = { showSpeechDisclosure = false },
             title = { Text(if(language==AppLanguage.FA) "دقت بیشتر" else "Higher accuracy") },
