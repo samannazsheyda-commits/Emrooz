@@ -18,6 +18,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 class DecoderFailureTest {
     @get:Rule val microphone = GrantPermissionRule.grant(Manifest.permission.RECORD_AUDIO)
 
+    @Test fun bundled_offline_model_decodes_silence_without_inventing_words() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        com.nameemrooz.journal.speech.ShenavaRnntRecognizer(context).use { recognizer ->
+            assertEquals("", recognizer.transcribe(FloatArray(16_000)))
+        }
+    }
+
     @Test fun failing_decoder_releases_microphone_before_reporting_stopped() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val ready = CountDownLatch(1)
