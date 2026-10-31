@@ -23,7 +23,7 @@ Use JDK 17, Gradle 8.13 and Android SDK 35 / build tools 35.0.0. Dependencies an
 gradle :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 ```
 
-The production package remains `com.nameemrooz.journal`, with database schema version 1 and version 2.2.1 / code 37. Its release APK is unsigned until the original release key is supplied through a private signing workflow.
+The production package remains `com.nameemrooz.journal`, with database schema version 1 and version 2.2.2 / code 38. Its release APK is unsigned until the original release key is supplied through a private signing workflow.
 
 Build an independently installable, signed preview without replacing an existing production installation:
 

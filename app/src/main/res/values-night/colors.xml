@@ -1,4 +1,5 @@
 <resources>
+    <color name="ic_launcher_background">#0D1726</color>
     <color name="splash_background">#0D1726</color>
     <bool name="splash_light_system_bars">false</bool>
 </resources>

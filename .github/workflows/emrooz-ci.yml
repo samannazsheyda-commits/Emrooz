@@ -46,15 +46,15 @@ jobs:
       - name: Verify APK, privacy and model integrity
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/Emrooz-2.2.1-Nano-Preview-arm64.apk
-          python3 tools/verify-apk.py out/Emrooz-2.2.1-Nano-Preview-arm64.apk
+          cp app/build/outputs/apk/release/app-release.apk out/Emrooz-2.2.2-Nano-Preview-arm64.apk
+          python3 tools/verify-apk.py out/Emrooz-2.2.2-Nano-Preview-arm64.apk
           BT="$ANDROID_HOME/build-tools/35.0.0"
           "$BT/apksigner" verify --verbose --print-certs out/*.apk >out/signature.txt
           "$BT/zipalign" -c -v 4 out/*.apk >out/alignment.txt
           "$BT/aapt" dump permissions out/*.apk >out/permissions.txt
           "$BT/aapt" dump badging out/*.apk >out/badging.txt
           ! grep -q android.permission.INTERNET out/permissions.txt
-          grep -q "versionCode='37' versionName='2.2.1'" out/badging.txt
+          grep -q "versionCode='38' versionName='2.2.2'" out/badging.txt
           grep -q "package: name='com.nameemrooz.journal.preview'" out/badging.txt
           sha256sum out/*.apk >out/sha256.txt
       - name: Build emulator and real UI tests
@@ -85,7 +85,7 @@ jobs:
       - name: Record honest QA status
         run: |
           cat >out/QA.txt <<'EOF'
-          Emrooz 2.2.1 preview
+          Emrooz 2.2.2 preview
           Unit tests, release lint/build, signatures, alignment, privacy/model checks and Android journal UI flow passed.
           Google editing is enabled by default, on-device and lazy; unsupported/error/timeout fallback is tested.
           Successful Nano inference still requires supported physical-device validation.
@@ -95,7 +95,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Emrooz-2.2.1-api-${{ matrix.api }}-preview-and-verification
+          name: Emrooz-2.2.2-api-${{ matrix.api }}-preview-and-verification
           path: |
             out/
             app/build/reports/tests/
