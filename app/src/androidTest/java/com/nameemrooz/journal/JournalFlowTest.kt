@@ -77,7 +77,7 @@ class JournalFlowTest {
             compose.onNodeWithText("انصراف").performClick()
             compose.onNode(hasSetTextAction()).assertTextEquals("نوشتهٔ قابل پاک کردن")
             compose.onNodeWithText("پاک کردن").performClick()
-            compose.onAllNodesWithText("پاک کردن").onLast().performClick()
+            compose.onNode(hasText("پاک کردن") and hasAnyAncestor(isDialog())).assertExists().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("نوشتن با صفحه‌کلید").fetchSemanticsNodes().isNotEmpty() }
             org.junit.Assert.assertEquals("", context.getSharedPreferences("emrooz_draft", Context.MODE_PRIVATE).getString("text", null))
             activity.recreate()
