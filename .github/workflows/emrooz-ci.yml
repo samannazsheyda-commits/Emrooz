@@ -31,7 +31,7 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 ndk;28.2.13676358 cmake;3.22.1'
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -55,20 +55,22 @@ jobs:
       - name: Verify APK, privacy and model integrity
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/Emrooz-2.3.0-Nano-Preview-arm64.apk
-          python3 tools/verify-apk.py out/Emrooz-2.3.0-Nano-Preview-arm64.apk
+          cp -r app/build/reports/tests out/jvm-tests
+          cp app/build/reports/lint-results-release.* out/
+          cp app/build/outputs/apk/release/app-release.apk out/Emrooz-2.3.1-Nano-Preview-arm64.apk
+          python3 tools/verify-apk.py out/Emrooz-2.3.1-Nano-Preview-arm64.apk
           BT="$ANDROID_HOME/build-tools/35.0.0"
-          python3 tools/verify-installation.py out/Emrooz-2.3.0-Nano-Preview-arm64.apk --build-tools "$BT" --preview
+          python3 tools/verify-installation.py out/Emrooz-2.3.1-Nano-Preview-arm64.apk --build-tools "$BT" --preview
           "$BT/apksigner" verify --verbose --print-certs out/*.apk >out/signature.txt
           "$BT/zipalign" -c -v 4 out/*.apk >out/alignment.txt
           "$BT/aapt" dump permissions out/*.apk >out/permissions.txt
           "$BT/aapt" dump badging out/*.apk >out/badging.txt
           ! grep -q android.permission.INTERNET out/permissions.txt
-          grep -q "versionCode='40' versionName='2.3.0'" out/badging.txt
+          grep -q "versionCode='41' versionName='2.3.1'" out/badging.txt
           grep -q "package: name='com.nameemrooz.journal.preview'" out/badging.txt
           sha256sum out/*.apk >out/sha256.txt
       - name: Build debug instrumentation APKs
-        run: gradle --no-daemon -PemroozPreview -PemroozAbi=x86_64 :app:assembleDebug :app:assembleDebugAndroidTest
+        run: gradle --no-daemon -PemroozPreview -PemroozAbi=x86_64 :app:clean :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -95,9 +97,9 @@ jobs:
       - name: Record honest QA status
         run: |
           cat >out/QA.txt <<'EOF'
-          Emrooz 2.3.0 preview (launcher name: امروز)
+          Emrooz 2.3.1 preview (launcher name: امروز)
           Unit tests, release lint/build, signatures, alignment, privacy/model checks, optimized-release install/launch and debug Android journal UI flow passed.
-          Whisper speech and INT8 punctuation are bundled offline; Shenava is absent. Gemini Nano editing is enabled by default, on-device and lazy; unsupported/error/timeout fallback is tested.
+          Speech uses the device recognizer; Whisper and Shenava are absent. INT8 punctuation remains local. Gemini Nano editing is enabled by default, on-device and lazy; unsupported/error/timeout fallback is tested.
           Successful Nano inference still requires supported physical-device validation.
           This preview uses a separate application ID and a CI debug certificate. It does not replace the installed production app or its notes.
           A production update requires the original signing key; no signing key is included in the artifacts.
@@ -105,7 +107,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Emrooz-2.3.0-api-${{ matrix.api }}-preview-and-verification
+          name: Emrooz-2.3.1-api-${{ matrix.api }}-preview-and-verification
           path: |
             out/
             app/build/reports/tests/

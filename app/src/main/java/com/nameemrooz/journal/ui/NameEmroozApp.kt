@@ -139,6 +139,13 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
     val speechMode by store.speechMode.collectAsState(initial = SpeechMode.PRIVATE_OFFLINE)
     val enhancedEditing by store.enhancedOnDeviceEditingEnabled.collectAsState(initial = true)
     val clearClipboard by store.clearClipboardEnabled.collectAsState(initial = true)
+    val disclosureAccepted by store.highAccuracyDisclosureAccepted.collectAsState(initial = false)
+    var showPhoneDisclosure by remember { mutableStateOf(false) }
+    val phoneSpeechAvailable = remember { SystemSpeechEngine.isAvailable(context) }
+    fun selectPhoneService() {
+        if (disclosureAccepted) scope.launch { store.setSpeechMode(SpeechMode.SYSTEM_HIGH_ACCURACY) }
+        else showPhoneDisclosure = true
+    }
     val languageTag = if (language == AppLanguage.FA) "fa-IR" else "en-US"
 
     val engine = remember(language, speechMode, enhancedEditing) {
@@ -153,7 +160,7 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
             enhancedEditingEnabled = enhancedEditing,
         )
     }
-    LaunchedEffect(engine) { engine.prepare() }
+    LaunchedEffect(engine) { ready = false; error = null; engine.prepare() }
     DisposableEffect(engine) { onDispose { engine.close() } }
     val lifecycleOwner = LocalLifecycleOwner.current
     val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
@@ -163,6 +170,7 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
                 restartWhenReady = false
                 permissionRequested = false
                 resetAction = null
+                showPhoneDisclosure = false
                 engine.stop()
             }
         }
@@ -195,6 +203,24 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
                 micPermission.launch(Manifest.permission.RECORD_AUDIO)
             }
         }
+    }
+
+    if (showPhoneDisclosure && interactive) {
+        AlertDialog(
+            onDismissRequest = { showPhoneDisclosure = false },
+            title = { Text(if(language==AppLanguage.FA) "استفاده از سرویس گفتار گوشی" else "Use device speech service") },
+            text = { Text(if(language==AppLanguage.FA)
+                "سرویس انتخاب‌شده در گوشی ممکن است صدا را برای پردازش به سرور ارائه‌دهنده بفرستد. نگهداری داده تابع سیاست همان سرویس است. امروز فایل صوتی ذخیره نمی‌کند؛ ویرایش متن داخل گوشی انجام می‌شود."
+                else "Your selected phone service may send audio to its provider's servers. Retention follows that provider's policy. Emrooz saves no audio files; editing runs locally.") },
+            confirmButton = { TextButton(onClick = {
+                showPhoneDisclosure = false
+                scope.launch {
+                    store.setHighAccuracyDisclosureAccepted(true)
+                    store.setSpeechMode(SpeechMode.SYSTEM_HIGH_ACCURACY)
+                }
+            }) { Text(if(language==AppLanguage.FA) "می‌پذیرم" else "I agree") } },
+            dismissButton = { TextButton(onClick = { showPhoneDisclosure = false }) { Text(if(language==AppLanguage.FA) "انصراف" else "Cancel") } },
+        )
     }
 
     if (resetAction != null && interactive) {
@@ -244,7 +270,14 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
                         Text(if(text.isBlank()) { if(language==AppLanguage.FA) "وقتی شروع به صحبت کنی، متن زنده همین‌جا نمایش داده می‌شود." else "Your live transcript will appear here when you start speaking." } else text,
                             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), textAlign=if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left, style=MaterialTheme.typography.bodyLarge)
                     }
-                    error?.let { Spacer(Modifier.height(10.dp)); Text(it, color=MaterialTheme.colorScheme.error) }
+                    error?.let {
+                        Spacer(Modifier.height(10.dp)); Text(it, color=MaterialTheme.colorScheme.error)
+                        if (!ready && speechMode == SpeechMode.PRIVATE_OFFLINE && phoneSpeechAvailable) {
+                            TextButton(onClick = { selectPhoneService() }) {
+                                Text(if(language==AppLanguage.FA) "انتخاب سرویس گفتار گوشی" else "Choose device speech service")
+                            }
+                        }
+                    }
                 }
         }
 
@@ -252,6 +285,7 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
         FilledIconButton(
             onClick={
                 buttonFeedback()
+                if (!ready) { selectPhoneService(); return@FilledIconButton }
                 error=null
                 if(listening) engine.stop()
                 else if(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) startRecording()
@@ -260,7 +294,7 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
                     micPermission.launch(Manifest.permission.RECORD_AUDIO)
                 }
             },
-            enabled=ready && !saving,
+            enabled=(ready || (speechMode == SpeechMode.PRIVATE_OFFLINE && error != null && phoneSpeechAvailable)) && !saving,
             modifier=Modifier.size(78.dp), shape=CircleShape,
         ) { Icon(if(listening) Icons.Default.Stop else Icons.Default.Mic, if(listening) { if(language==AppLanguage.FA) "توقف" else "Stop" } else { if(language==AppLanguage.FA) "شروع ضبط" else "Start recording" }, Modifier.size(32.dp)) }
         Text(if(listening) { if(language==AppLanguage.FA) "برای توقف لمس کن" else "Tap to stop" } else { if(language==AppLanguage.FA) "شروع صحبت" else "Start speaking" }, style=MaterialTheme.typography.titleMedium)
@@ -291,7 +325,7 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
         if ((text.isNotBlank() || listening) && !saving) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceEvenly) {
                 TextButton(onClick={ resetAction=false }) { Text(if(language==AppLanguage.FA) "پاک کردن" else "Clear") }
-                TextButton(onClick={ resetAction=true }, enabled=ready) { Text(if(language==AppLanguage.FA) "ضبط دوباره" else "Record again") }
+                TextButton(onClick={ if (ready) resetAction=true else selectPhoneService() }, enabled=ready || (speechMode == SpeechMode.PRIVATE_OFFLINE && error != null && phoneSpeechAvailable)) { Text(if(language==AppLanguage.FA) "ضبط دوباره" else "Record again") }
             }
         }
         TextButton(onClick=onList, enabled=!listening && !saving) { Text(if(language==AppLanguage.FA) "آرشیو نوشته‌ها" else "Notes archive") }
@@ -322,7 +356,6 @@ private fun localizeSpeechError(message: String, language: AppLanguage): String 
     if (language == AppLanguage.FA) return message
     return when (message) {
         "مدل فارسی آماده نشد" -> "Offline speech model is not ready"
-        "مدل Whisper آماده نشد" -> "Offline Whisper model is not ready"
         "چند لحظه صبر کن تا نوشتن آماده شود" -> "Please wait while speech recognition gets ready"
         "برای نوشتن با صدا اجازه‌ی میکروفون لازم است" -> "Microphone permission is required"
         "میکروفون آماده نشد" -> "Microphone is not ready"
@@ -330,6 +363,15 @@ private fun localizeSpeechError(message: String, language: AppLanguage): String 
         "دریافت صدا از میکروفون قطع شد" -> "Microphone input stopped"
         "سرویس گفتار گوشی در دسترس نیست" -> "Device speech service is unavailable"
         "سرویس گفتار گوشی آماده نشد" -> "Device speech service is not ready"
+        "گفتار آفلاین روی این گوشی در دسترس نیست؛ سرویس گفتار گوشی را انتخاب کنید" -> "Offline speech is unavailable on this phone; choose the device speech service"
+        "مدل این زبان برای گفتار آفلاین نصب نیست؛ سرویس گفتار گوشی را انتخاب کنید" -> "This offline language model is not installed; choose the device speech service"
+        "این زبان در گفتار آفلاین گوشی پشتیبانی نمی‌شود؛ سرویس گفتار گوشی را انتخاب کنید" -> "This language is not supported offline; choose the device speech service"
+        "گفتار آفلاین برای این زبان آماده نیست؛ سرویس گفتار گوشی را انتخاب کنید" -> "Offline speech is not ready for this language; choose the device speech service"
+        "این زبان در گفتار آفلاین گوشی آماده نیست؛ سرویس گفتار گوشی را انتخاب کنید" -> "Offline speech is not ready for this language; choose the device speech service"
+        "بررسی گفتار آفلاین پاسخ نداد؛ سرویس گفتار گوشی را انتخاب کنید" -> "Offline speech check timed out; choose the device speech service"
+        "سرویس گفتار گوشی پاسخ نداد؛ دوباره تلاش کنید" -> "Device speech service did not respond; try again"
+        "این زبان در سرویس گفتار گوشی آماده نیست" -> "This language is unavailable in the device speech service"
+        "گفتاری دریافت نشد؛ دوباره تلاش کنید" -> "No speech was received; try again"
         "دقت بیشتر در دسترس نبود؛ آفلاین ادامه می‌دهم" -> "Higher-accuracy speech is unavailable; continuing offline"
         "اجازه‌ی میکروفون برای تبدیل صدا لازم است" -> "Microphone permission is required for speech recognition"
         "پردازش از ضبط عقب افتاد؛ ضبط متوقف شد و صدای دریافت‌شده در حال تبدیل است" -> "Recognition is catching up; recording stopped while captured speech is transcribed"
@@ -589,7 +631,6 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
         }
     }
     val systemSpeechAvailable = remember { SystemSpeechEngine.isAvailable(context) }
-    val systemOnDeviceAvailable = remember { SystemSpeechEngine.isOnDeviceAvailable(context) }
     var showSpeechDisclosure by remember { mutableStateOf(false) }
     val lock by store.lockEnabled.collectAsState(initial=true)
     val reminder by store.reminderEnabled.collectAsState(initial=true)
@@ -666,19 +707,17 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
             SpeechModeOption(
                 selected = speechMode == SpeechMode.PRIVATE_OFFLINE,
                 enabled = true,
-                title = if(language==AppLanguage.FA) "خصوصی و آفلاین — Whisper" else "Private & offline — Whisper",
-                subtitle = if(language==AppLanguage.FA) "بدون اینترنت؛ صدا از گوشی خارج نمی‌شود" else "No internet; speech stays on this device",
+                title = if(language==AppLanguage.FA) "گفتار آفلاین گوشی" else "On-device offline speech",
+                subtitle = if(language==AppLanguage.FA) "فقط در صورت پشتیبانی این زبان روی گوشی؛ بدون ارسال صدا به سرور" else "Requires on-device support for this language; no server speech processing",
                 onClick = { scope.launch { store.setSpeechMode(SpeechMode.PRIVATE_OFFLINE) } },
             )
             DividerSoft()
             SpeechModeOption(
                 selected = speechMode == SpeechMode.SYSTEM_HIGH_ACCURACY,
                 enabled = systemSpeechAvailable,
-                title = if(language==AppLanguage.FA) "دقت بیشتر — سرویس گفتار گوشی" else "Higher accuracy — device speech service",
+                title = if(language==AppLanguage.FA) "سرویس گفتار گوشی" else "Device speech service",
                 subtitle = if (!systemSpeechAvailable) {
                     if(language==AppLanguage.FA) "روی این گوشی در دسترس نیست" else "Not available on this device"
-                } else if (systemOnDeviceAvailable) {
-                    if(language==AppLanguage.FA) "این گوشی سرویس تشخیص گفتار روی دستگاه هم دارد" else "This device also has on-device recognition"
                 } else {
                     if(language==AppLanguage.FA) "ممکن است برای تشخیص گفتار از اینترنت استفاده کند" else "May use internet for recognition"
                 },
@@ -719,8 +758,8 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
         Text(if(language==AppLanguage.FA) "حریم خصوصی" else "Privacy", Modifier.fillMaxWidth(), textAlign=align, style=MaterialTheme.typography.titleLarge)
         Text(
             if (speechMode == SpeechMode.PRIVATE_OFFLINE) {
-                if(language==AppLanguage.FA) "صدا ذخیره یا آپلود نمی‌شود. تبدیل صدا به متن و ویراستاری روی همین گوشی انجام می‌شود."
-                else "Audio is never saved or uploaded. Speech-to-text and editing run on this device."
+                if(language==AppLanguage.FA) "امروز فایل صوتی ذخیره نمی‌کند. در حالت آفلاین، تبدیل صدا به متن و ویراستاری روی همین گوشی انجام می‌شود؛ آماده بودن زبان به سرویس گوشی بستگی دارد."
+                else "Emrooz saves no audio files. Offline recognition and editing run on this device; language availability depends on the phone service."
             } else {
                 if(language==AppLanguage.FA) "امروز صدا را ذخیره نمی‌کند. سرویس گفتار گوشی ممکن است بسته به تنظیمات دستگاه برای تشخیص گفتار از اینترنت استفاده کند؛ ویراستاری داخل اپ محلی است."
                 else "Emrooz never saves audio. Your device speech service may use the internet depending on device settings; editing inside Emrooz remains local."

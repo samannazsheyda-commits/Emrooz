@@ -1,5 +1,1 @@
-Persian speech model: C1Tech/whisper_base_persian, converted to GGML Q8_0 by armantee, Apache-2.0, pinned revision ea634cb5f241db4234de61cec5353c356868c88e. Source: https://huggingface.co/armantee/whisper-base-persian-ggml . Apache-2.0 license included.
-
-English speech model: OpenAI Whisper Tiny.en, converted/quantized by whisper.cpp maintainers. Model file ggml-tiny.en-q5_1.bin. Sources: https://github.com/openai/whisper and https://huggingface.co/ggerganov/whisper.cpp . MIT license included.
-
 Punctuation model: punct_cap_seg_47_language by 1-800-BAD-CODE, upstream revision 1b9d51f, locally quantized to INT8 without changing output labels. Source: https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_47_language . Apache-2.0 license included.

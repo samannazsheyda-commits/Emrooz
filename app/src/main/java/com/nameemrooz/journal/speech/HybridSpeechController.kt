@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Presents one stable speech session to the UI while allowing the optional device
- * recognizer to fall back to private Whisper without losing already accepted text.
+ * recognizer to run either explicitly on-device or through the disclosed system service.
  *
  * Live deterministic cleanup happens on every update. Neural editing/punctuation runs only
  * for stable pause/final segments and never blocks microphone capture.
@@ -145,11 +145,7 @@ class HybridSpeechController(
         }
         val listeningCallback: (Boolean) -> Unit = listening@{ listening ->
             if (closed.get() || epoch != engineEpoch) return@listening
-            if (listening) onListening(true)
-            else scope.launch {
-                editingJob?.join()
-                mainHandler.post { if (!closed.get() && epoch == engineEpoch) onListening(false) }
-            }
+            onListening(listening)
         }
         val readyCallback: (Boolean) -> Unit = ready@{ ready ->
             if (closed.get() || epoch != engineEpoch) return@ready
@@ -160,40 +156,25 @@ class HybridSpeechController(
             }
         }
 
-        return when (mode) {
-            SpeechMode.PRIVATE_OFFLINE -> WhisperSpeechEngine(
-                context = appContext,
-                languageTag = languageTag,
-                onText = textCallback,
-                onListening = listeningCallback,
-                onReady = readyCallback,
-                onError = { if (!closed.get() && epoch == engineEpoch) onError(it) },
-                onStableText = stableCallback,
-            )
-            SpeechMode.SYSTEM_HIGH_ACCURACY -> SystemSpeechEngine(
-                context = appContext,
-                languageTag = languageTag,
-                onText = textCallback,
-                onListening = listeningCallback,
-                onReady = readyCallback,
-                onError = { if (!closed.get() && epoch == engineEpoch) onError(it) },
-                onFallbackRequested = { reason -> if (!closed.get() && epoch == engineEpoch) fallbackToOffline(reason) },
-                onStableText = stableCallback,
-            )
-        }
-    }
-
-    private fun fallbackToOffline(reason: String) {
-        if (closed.get() || activeMode == SpeechMode.PRIVATE_OFFLINE || fallbackUsed) return
-        fallbackUsed = true
-        val shouldResume = sessionRequested
-        carryPrefix = rawCurrent
-        activeEngine?.close()
-        activeMode = SpeechMode.PRIVATE_OFFLINE
-        activeEngine = createEngine(activeMode)
-        pendingFallbackStart = shouldResume
-        onError(reason)
-        activeEngine?.prepare()
+        return SystemSpeechEngine(
+            context = appContext,
+            languageTag = languageTag,
+            onDeviceOnly = mode == SpeechMode.PRIVATE_OFFLINE,
+            onText = textCallback,
+            onListening = listeningCallback,
+            onReady = readyCallback,
+            onError = { if (!closed.get() && epoch == engineEpoch) onError(it) },
+            onFallbackRequested = { reason ->
+                if (!closed.get() && epoch == engineEpoch) {
+                    sessionRequested = false
+                    pendingFallbackStart = false
+                    onListening(false)
+                    onReady(false)
+                    onError(reason)
+                }
+            },
+            onStableText = stableCallback,
+        )
     }
 
     fun actualMode(): SpeechMode = activeMode

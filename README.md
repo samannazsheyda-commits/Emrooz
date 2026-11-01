@@ -1,12 +1,12 @@
 # امروز — Emrooz
 
-A Persian/English Android voice journal. The maintained app is `app/`; `whisper-runtime/` contains its small CPU-only JNI integration. Historical reconstruction directories are not packaged.
+A Persian/English Android voice journal. The maintained app is `app/`; speech recognition uses Android device services. Historical reconstruction directories are not packaged.
 
 ## Current release
 
-Version **2.3.0 / code 40**, production ID `com.nameemrooz.journal`, minimum Android 8 (API 26). Every launcher label is exactly **امروز**. The approved original copper logo, cream/navy themes, Abar/Lato fonts and aspect-preserving splash images are retained.
+Version **2.3.1 / code 41**, production ID `com.nameemrooz.journal`, minimum Android 8 (API 26). Every launcher label is exactly **امروز**. The approved original copper logo, cream/navy themes, Abar/Lato fonts and aspect-preserving splash images are retained.
 
-- Default offline speech: Persian-finetuned Whisper Base Q8_0 and English Whisper Tiny.en Q5_1, pinned model and official whisper.cpp v1.8.3 source. Shenava assets and its sherpa runtime are removed.
+- Bundled Whisper/Shenava speech models and their native runtimes are removed. Private mode uses Android’s explicit on-device speech factory (Android 12+), checks language support where available, and reports unsupported or uninstalled languages. It never silently selects a network service.
 - Local INT8 punctuation: the original model's MatMul and embedding/Gather weights are quantized, reducing its graph from 232,986,305 to 58,702,685 bytes. Punctuation is inserted into the original source text; names, numbers, whitespace and long text are retained.
 - Gemini Nano editing is enabled by default when unset, preserves an explicit OFF preference, and is used only when the device model is available. Unsupported/error/timeout/unsafe generation uses local editing. Nano weights are provisioned by Android AICore, not bundled in the APK.
 - Optional device speech service requires explicit disclosure acceptance. It may use its provider's servers; it is never silently enabled as an offline fallback.
@@ -15,7 +15,7 @@ Version **2.3.0 / code 40**, production ID `com.nameemrooz.journal`, minimum And
 
 ## Build
 
-Use JDK 17, Gradle 8.13, Android SDK/build tools 35, NDK 28.2.13676358 and CMake 3.22.1. Python 3.12 with the pinned quantization tools is required only when the INT8 model asset is not already cached:
+Use JDK 17, Gradle 8.13, Android SDK/build tools 35. No NDK/CMake speech build is needed. Python 3.12 with the pinned quantization tools is required only when the INT8 model asset is not already cached:
 
 ```bash
 python3 -m venv .model-venv
@@ -24,7 +24,7 @@ export EMROOZ_MODEL_PYTHON="$PWD/.model-venv/bin/python"
 gradle :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 ```
 
-Build downloads are pinned and SHA-256 checked. Original punctuation weights are stored under the build directory, never packaged. Only the two language-specific Whisper models, INT8 punctuation graph and tokenizer are bundled. The MIT and Apache-2.0 model notices are included in the APK.
+Build downloads are pinned and SHA-256 checked. Original punctuation weights are stored under the build directory, never packaged. Only the INT8 punctuation graph and tokenizer are bundled. The Apache-2.0 model notice is included in the APK.
 
 ## Signing and publication
 
@@ -41,13 +41,13 @@ Valid signatures and release flags do not guarantee store approval or absence of
 
 ## Verification
 
-The Actions workflow builds the arm64 release, runs unit tests/lint and checks actual APK model bytes, ABI, signature/alignment, launcher name, release flags and absence of Shenava. It then installs/launches a release variant and runs journal/lock/draft/Nano/native-model/microphone flows on API 26 and 35 emulators. The core writing suite also runs with `GRADLE_HOME=/path/to/gradle-8.13 bash tools/test-core.sh`.
+The Actions workflow builds the arm64 release, runs unit tests/lint and checks actual APK model bytes, ABI, signature/alignment, launcher name, release flags and absence of bundled speech models/runtimes. It separately installs/launches an optimized x86_64 release variant and runs debug journal/lock/draft/Nano, device-unavailable and punctuation-runtime flows on API 26 and 35 emulators. Provider speech accuracy and successful physical microphone recognition are not established by those emulator tests. The core writing suite also runs with `GRADLE_HOME=/path/to/gradle-8.13 bash tools/test-core.sh`.
 
 `tools/verify-punctuation-quality.py` compares the original and quantized graph on a fixed source-preserving smoke set; it is not a gold-label grammar evaluation. Real speech accuracy, especially proper names, varies. A successful build, silence test or small speech smoke set does not establish accuracy on every voice/phone. Actual Nano inference requires compatible physical hardware.
 
 ## Privacy
 
-Emrooz has no INTERNET permission. Offline speech and editing use bounded in-memory audio, and no voice file is saved. When processing cannot keep up, capture stops with an error while already received audio is drained rather than silently dropping queued chunks. Audio buffers are wiped after use. Notes/drafts remain in app-private local storage, backups are disabled, and screenshots/Recent Apps capture are blocked. The optional device recognition service has its own permissions/network policy, explained before selection.
+Emrooz has no INTERNET permission. Emrooz does not capture audio into its own files or upload audio itself. Explicit on-device recognition keeps speech processing on the device. The normal device recognition service may send audio to its provider and its retention policy applies; accepting its disclosure is required. Stop does not wait for local editing, service preparation/results have deadlines, and delayed callbacks from discarded sessions are rejected. Notes/drafts remain in app-private local storage, backups are disabled, and screenshots/Recent Apps capture are blocked. The optional device recognition service has its own permissions/network policy, explained before selection.
 
 ## Branding
 

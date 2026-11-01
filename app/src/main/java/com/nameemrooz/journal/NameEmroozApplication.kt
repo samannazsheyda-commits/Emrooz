@@ -26,6 +26,9 @@ class NameEmroozApplication : Application(), Configuration.Provider {
             listOf("punctuation47.onnx", "punctuation47.onnx.part").forEach {
                 File(modelCache, it).delete()
             }
+            // Bundled speech was removed; reclaim only its old model directories.
+            File(noBackupFilesDir, "whisper").deleteRecursively()
+            File(filesDir, "shenava").deleteRecursively()
             if (SettingsStore(this@NameEmroozApplication).reminderEnabled.first()) {
                 ReminderWorker.schedule(this@NameEmroozApplication)
             }

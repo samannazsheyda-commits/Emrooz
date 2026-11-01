@@ -11,15 +11,14 @@ plugins {
 android {
     namespace = "com.nameemrooz.journal"
     compileSdk = 35
-    ndkVersion = "28.2.13676358"
     testBuildType = if (providers.gradleProperty("emroozReleaseTests").isPresent) "release" else "debug"
 
     defaultConfig {
         applicationId = "com.nameemrooz.journal"
         minSdk = 26
         targetSdk = 35
-        versionCode = 40
-        versionName = "2.3.0"
+        versionCode = 41
+        versionName = "2.3.1"
         manifestPlaceholders["applicationLabel"] = "امروز"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         if (providers.gradleProperty("emroozPreview").isPresent) {
@@ -76,7 +75,7 @@ android {
 
     buildFeatures { compose = true; buildConfig = true }
 
-    sourceSets.getByName("main").assets.exclude("models/shenava*/**", "models/whisper/ggml-base-q5_1.bin*", "models/punctuation47/punct_cap_seg_47lang.onnx")
+    sourceSets.getByName("main").assets.exclude("models/shenava*/**", "models/whisper/**", "models/punctuation47/punct_cap_seg_47lang.onnx")
 
     androidResources {
         noCompress += listOf("onnx", "bin")
@@ -114,29 +113,6 @@ fun downloadVerified(url: String, target: File, digest: String) {
     } finally { temp.delete() }
 }
 
-data class WhisperAsset(val name: String, val url: String, val hash: String)
-val whisperAssets = listOf(
-    WhisperAsset("ggml-base-persian-q8_0.bin",
-        "https://huggingface.co/armantee/whisper-base-persian-ggml/resolve/ea634cb5f241db4234de61cec5353c356868c88e/ggml-base-persian-q8_0.bin?download=true",
-        "a8bcb0746be5c9741ba8d1c87c89cccb6fa1452e7878275071f5165a7c43f4a7"),
-    WhisperAsset("ggml-tiny.en-q5_1.bin",
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en-q5_1.bin?download=true",
-        "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b")
-)
-val whisperDir = layout.projectDirectory.dir("src/main/assets/models/whisper")
-val fetchWhisperModel by tasks.registering {
-    group = "model"
-    inputs.property("models", whisperAssets.joinToString { it.hash })
-    outputs.dir(whisperDir)
-    doLast {
-        whisperAssets.forEach { asset ->
-            val target = File(whisperDir.asFile, asset.name)
-            downloadVerified(asset.url, target, asset.hash)
-            File(target.path + ".sha256").writeText(asset.hash + "\n")
-        }
-    }
-}
-
 val punctuationHash = "fa630cad87cdf398422aee51c66fda532b82dc8164d9653a588277a2ea98adcb"
 val punctuationDir = layout.projectDirectory.dir("src/main/assets/models/punctuation47")
 val fetchPunctuationModel by tasks.registering {
@@ -167,7 +143,7 @@ val fetchPunctuationModel by tasks.registering {
     }
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchWhisperModel, fetchPunctuationModel) }
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchPunctuationModel) }
 
 kapt {
     correctErrorTypes = true
@@ -195,7 +171,6 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
-    implementation(project(":whisper-runtime"))
 
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("io.github.eix128:sentencepiece4j:1.0.2")
