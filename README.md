@@ -1,98 +1,54 @@
 # امروز — Emrooz
 
-An Android Persian/English voice journal with local notes, live transcription and optional Google on-device editing.
+A Persian/English Android voice journal. The maintained app is `app/`; `whisper-runtime/` contains its small CPU-only JNI integration. Historical reconstruction directories are not packaged.
 
-The maintained Android application now lives in **`app/`**. The `payload/`, `approved_ui/`, `hybrid_v203/`, and `hybrid_v204/` directories are historical reconstruction inputs, not the active source tree. Open this repository root in Android Studio.
+## Current release
 
-## Features
+Version **2.3.0 / code 40**, production ID `com.nameemrooz.journal`, minimum Android 8 (API 26). Every launcher label is exactly **امروز**. The approved original copper logo, cream/navy themes, Abar/Lato fonts and aspect-preserving splash images are retained.
 
-- Bundled offline Persian Shenava RNNT speech recognition with the corrected `nemo_transducer` profile.
-- Optional Android device speech service, with an explicit disclosure before selecting it.
-- Live transcript, repeated recording appended to the current draft, manual editing, and local draft recovery.
-- Clear or record again with confirmation: the unsaved draft is removed, pending speech/edit results are invalidated, and saved notes are retained.
-- Room-backed notes, edit/archive/restore/delete, and date/time navigation.
-- Persian RTL / English LTR, Abar/Lato fonts, day/night themes and UI size settings.
-- Biometric-first lock with a fallback passcode; journal content is hidden when the app leaves the foreground.
-- Optional ML Kit Prompt / Gemini Nano writing enhancement, ON by default (can be switched off). Text only; no audio is passed to it.
-- Local fallback for unsupported devices, model downloads, failures, unsafe edits and timeouts. Names, numbers, links and emphasis are protected.
+- Default offline speech: Persian-finetuned Whisper Base Q8_0 and English Whisper Tiny.en Q5_1, pinned model and official whisper.cpp v1.8.3 source. Shenava assets and its sherpa runtime are removed.
+- Local INT8 punctuation: the original model's MatMul and embedding/Gather weights are quantized, reducing its graph from 232,986,305 to 58,702,685 bytes. Punctuation is inserted into the original source text; names, numbers, whitespace and long text are retained.
+- Gemini Nano editing is enabled by default when unset, preserves an explicit OFF preference, and is used only when the device model is available. Unsupported/error/timeout/unsafe generation uses local editing. Nano weights are provisioned by Android AICore, not bundled in the APK.
+- Optional device speech service requires explicit disclosure acceptance. It may use its provider's servers; it is never silently enabled as an offline fallback.
+- Clear and Record again actions confirm draft removal, invalidate old speech/edit results and preserve saved Room notes. Pending automatic recording is canceled on background/lock.
+- Local draft recovery, save/edit/archive/delete, Persian RTL/English LTR, theme/size settings, biometric/passcode lock and conditional clipboard cleanup remain supported.
 
-## Build and verify
+## Build
 
-Use JDK 17, Gradle 8.13 and Android SDK 35 / build tools 35.0.0. Dependencies and model assets require internet during the build. The app itself has no INTERNET permission. Six model/tokenizer assets are checksum-verified before packaging; they are not committed to Git.
+Use JDK 17, Gradle 8.13, Android SDK/build tools 35, NDK 28.2.13676358 and CMake 3.22.1. Python 3.12 with the pinned quantization tools is required only when the INT8 model asset is not already cached:
 
 ```bash
+python3 -m venv .model-venv
+.model-venv/bin/pip install -r tools/model-requirements.txt
+export EMROOZ_MODEL_PYTHON="$PWD/.model-venv/bin/python"
 gradle :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 ```
 
-The production package remains `com.nameemrooz.journal`, with database schema version 1 and version 2.2.3 / code 39. Its launcher name is always **امروز**, including separate test installations; label overrides are ignored.
+Build downloads are pinned and SHA-256 checked. Original punctuation weights are stored under the build directory, never packaged. Only the two language-specific Whisper models, INT8 punctuation graph and tokenizer are bundled. The MIT and Apache-2.0 model notices are included in the APK.
 
-For a signed publication build, supply `EMROOZ_RELEASE_STORE_FILE`,
-`EMROOZ_RELEASE_STORE_PASSWORD`, `EMROOZ_RELEASE_KEY_ALIAS`, and
-`EMROOZ_RELEASE_KEY_PASSWORD` privately, then run:
+## Signing and publication
+
+Set `EMROOZ_RELEASE_STORE_FILE`, `EMROOZ_RELEASE_STORE_PASSWORD`, `EMROOZ_RELEASE_KEY_ALIAS`, and `EMROOZ_RELEASE_KEY_PASSWORD` privately before `:app:assembleRelease`. Without these variables the production release remains unsigned and must not be submitted. Keep the persistent signing key/passwords outside Git and public CI. Updating an installed package requires its existing certificate.
 
 ```bash
-gradle :app:assembleRelease
+python3 tools/verify-apk.py app/build/outputs/apk/release/app-release.apk
 python3 tools/verify-installation.py app/build/outputs/apk/release/app-release.apk --build-tools "$ANDROID_HOME/build-tools/35.0.0"
 ```
 
-Without these variables the production APK remains unsigned and must not be submitted.
-Updates require the same production signing certificate; do not generate a new key
-for an existing published package. Keep signing keys and passwords outside Git and
-public CI artifacts. The verifier rejects unsigned APKs, the standard Android debug
-certificate, a preview application ID, debug/test-only flags, a wrong launcher name,
-and invalid ZIP alignment. It does not establish acceptance by a store or Play Protect.
+An independently installed CI build uses `-PemroozPreview` (`com.nameemrooz.journal.preview`, debug certificate). It has the same visible name but is not a store submission. For the privately signed update package delivered after 2.2.2, retain `com.nameemrooz.journal.preview.hotfix` with `-PemroozPreviewApplicationId` and supply the existing `EMROOZ_PREVIEW_*` key variables. `verify-installation.py --application-id ...` checks this explicit update identity while still rejecting a standard debug certificate. A separate production ID does not automatically inherit another package's local notes.
 
-Build an independently installable, signed preview without replacing an existing production installation:
+Valid signatures and release flags do not guarantee store approval or absence of Google's unknown-app scan prompt. See [Google's developer guidance](https://developers.google.com/android/play-protect/warning-dev-guidance). No installation bypass or Play Protect disabling is implemented.
 
-```bash
-gradle -PemroozPreview :app:assembleRelease
-```
+## Verification
 
-That preview uses `com.nameemrooz.journal.preview` and the build machine's debug certificate. Keep the production app installed to retain its existing notes. No private release key is stored in this repository or uploaded with verification artifacts.
+The Actions workflow builds the arm64 release, runs unit tests/lint and checks actual APK model bytes, ABI, signature/alignment, launcher name, release flags and absence of Shenava. It then installs/launches a release variant and runs journal/lock/draft/Nano/native-model/microphone flows on API 26 and 35 emulators. The core writing suite also runs with `GRADLE_HOME=/path/to/gradle-8.13 bash tools/test-core.sh`.
 
-For a persistent private preview certificate, set `EMROOZ_PREVIEW_STORE_FILE`,
-`EMROOZ_PREVIEW_STORE_PASSWORD`, `EMROOZ_PREVIEW_KEY_ALIAS`, and
-`EMROOZ_PREVIEW_KEY_PASSWORD` in the build environment. Keep the key and all
-passwords outside Git and public CI artifacts. `-PemroozPreviewApplicationId=...`
-can give a separately signed preview its own package. A separate package avoids requiring an
-uninstall of a previous preview and losing its local notes.
-
-For an x86_64 emulator and real UI tests:
-
-```bash
-gradle -PemroozPreview -PemroozAbi=x86_64 :app:connectedDebugAndroidTest
-```
-
-The `Emrooz complete Android verification` Actions workflow builds the arm64 preview, runs unit tests and lint, verifies packaged hashes/signature/permissions, and tests real draft/settings/Google-toggle/save/lock flows on Android API 26 and 35 emulators. Its downloadable artifact contains the APK and verification reports. The core writing regression suite can also run without the Android SDK using `GRADLE_HOME=/path/to/gradle-8.13 bash tools/test-core.sh`.
-
-## Google editor availability
-
-The default is enabled; Settings includes **ویراستاری با جمینای نانو / Gemini Nano editing**. Emrooz displays the model's runtime availability. Device AICore services may need to provision/download the model separately. Unsupported or unavailable models leave the local editor active. No cloud editing fallback or API key is used.
-
-## Installation and Play Protect
-
-CI installs and launches the release variant on API 26 and 35 emulators before
-running the journal instrumentation suite. These emulators do not establish
-Play Protect reputation or store approval. An unknown-app scan recommendation is
-different from a malformed APK, certificate conflict, or a harmful-app block.
-See Google's [developer guidance for Play Protect warnings](https://developers.google.com/android/play-protect/warning-dev-guidance).
-Investigate the exact warning before treating it as an APK defect. A valid private
-release certificate is necessary for publication but cannot guarantee that Google
-will never request a scan. No installation bypass or Play Protect disabling is used.
-
-Successful Gemini Nano inference and Persian correction quality must be validated on a supported physical device. Emulator fallback tests and a successful build do not establish hardware support or actual Nano inference quality.
+`tools/verify-punctuation-quality.py` compares the original and quantized graph on a fixed source-preserving smoke set; it is not a gold-label grammar evaluation. Real speech accuracy, especially proper names, varies. A successful build, silence test or small speech smoke set does not establish accuracy on every voice/phone. Actual Nano inference requires compatible physical hardware.
 
 ## Privacy
 
-Microphone samples remain in bounded RAM queues and are wiped after use. Emrooz never saves audio. Notes and draft text stay in private local app storage; backups are disabled and screenshots/Recent Apps capture are blocked. The optional Android speech service can use its own internet access outside Emrooz, as disclosed in Settings. Automatic clipboard cleanup is conditional: it clears only the copied Emrooz text if another app has not replaced it.
+Emrooz has no INTERNET permission. Offline speech and editing use bounded in-memory audio, and no voice file is saved. When processing cannot keep up, capture stops with an error while already received audio is drained rather than silently dropping queued chunks. Audio buffers are wiped after use. Notes/drafts remain in app-private local storage, backups are disabled, and screenshots/Recent Apps capture are blocked. The optional device recognition service has its own permissions/network policy, explained before selection.
 
-## Logo and splash
+## Branding
 
-Approved copper artwork is preserved in `branding/source/`. See
-`branding/README.md` and `tools/generate-branding.py` for reproducible density
-icons (48/72/96/144/192px plus the 512px store asset), safe adaptive artwork,
-and aspect-preserving light/dark splash resources.
-
-The ML Kit runtime dependency is retained because the SDK links its classes
-before availability checking. The manifest removes the SDK's INTERNET
-permission; removing runtime classes instead caused the Settings crash.
+The authoritative bitmap is `branding/source/F7F2EA.png`; see `branding/README.md` and `tools/generate-branding.py`. Uniform resizing preserves the artwork; night mode changes only the approved wordmark color. Density icons, round/adaptive day/night resources and Android 12+ splash assets are included.

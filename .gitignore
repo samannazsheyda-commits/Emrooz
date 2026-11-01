@@ -10,3 +10,6 @@ app/src/main/assets/models/
 out/
 .superpowers/
 __pycache__/
+**/.cxx/
+**/.externalNativeBuild/
+.model-venv/

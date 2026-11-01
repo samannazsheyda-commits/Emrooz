@@ -1,5 +1,14 @@
 package com.nameemrooz.journal.speech
 
+/**
+ * Preserve the provider's highest-ranked nonempty result. Requesting formatting is
+ * only a hint: some providers still return ranked alternatives, so a second result
+ * with different words must never replace the first one.
+ */
+internal object SystemSpeechResultPolicy {
+    fun select(results: List<String>): String = results.firstOrNull { it.isNotBlank() }.orEmpty()
+}
+
 enum class SystemSpeechFailure {
     NO_MATCH,
     SPEECH_TIMEOUT,

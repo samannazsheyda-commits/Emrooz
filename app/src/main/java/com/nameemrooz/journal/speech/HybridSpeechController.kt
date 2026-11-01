@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Presents one stable speech session to the UI while allowing the optional device
- * recognizer to fall back to Shenava without losing already accepted text.
+ * recognizer to fall back to private Whisper without losing already accepted text.
  *
  * Live deterministic cleanup happens on every update. Neural editing/punctuation runs only
  * for stable pause/final segments and never blocks microphone capture.
@@ -37,7 +37,7 @@ class HybridSpeechController(
     private val onListening: (Boolean) -> Unit,
     private val onReady: (Boolean) -> Unit,
     private val onError: (String) -> Unit,
-    private val enhancedEditingEnabled: Boolean = false,
+    private val enhancedEditingEnabled: Boolean = true,
 ) : SpeechEngine {
     private val appContext = context.applicationContext
     private val closed = AtomicBoolean(false)
@@ -161,8 +161,9 @@ class HybridSpeechController(
         }
 
         return when (mode) {
-            SpeechMode.PRIVATE_OFFLINE -> LiveSpeechEngine(
+            SpeechMode.PRIVATE_OFFLINE -> WhisperSpeechEngine(
                 context = appContext,
+                languageTag = languageTag,
                 onText = textCallback,
                 onListening = listeningCallback,
                 onReady = readyCallback,

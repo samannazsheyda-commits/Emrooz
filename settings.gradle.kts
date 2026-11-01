@@ -14,4 +14,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "NameEmroozUltimate"
-include(":app")
+include(":app", ":whisper-runtime")

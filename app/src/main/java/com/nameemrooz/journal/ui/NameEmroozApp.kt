@@ -206,11 +206,12 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
                 TextButton(onClick = {
                     val recordAgain = resetAction == true
                     resetAction = null
-                    engine.discard()
+                    // Clear the previous error before prepare() can report a new failure.
+                    error = null
                     draft.clear()
                     editing = false
-                    error = null
                     restartWhenReady = recordAgain
+                    engine.discard()
                 }) {
                     Text(if(resetAction == true) { if(language==AppLanguage.FA) "پاک کردن و ضبط دوباره" else "Clear and record again" }
                         else { if(language==AppLanguage.FA) "پاک کردن" else "Clear" })
@@ -321,6 +322,7 @@ private fun localizeSpeechError(message: String, language: AppLanguage): String 
     if (language == AppLanguage.FA) return message
     return when (message) {
         "مدل فارسی آماده نشد" -> "Offline speech model is not ready"
+        "مدل Whisper آماده نشد" -> "Offline Whisper model is not ready"
         "چند لحظه صبر کن تا نوشتن آماده شود" -> "Please wait while speech recognition gets ready"
         "برای نوشتن با صدا اجازه‌ی میکروفون لازم است" -> "Microphone permission is required"
         "میکروفون آماده نشد" -> "Microphone is not ready"
@@ -330,6 +332,7 @@ private fun localizeSpeechError(message: String, language: AppLanguage): String 
         "سرویس گفتار گوشی آماده نشد" -> "Device speech service is not ready"
         "دقت بیشتر در دسترس نبود؛ آفلاین ادامه می‌دهم" -> "Higher-accuracy speech is unavailable; continuing offline"
         "اجازه‌ی میکروفون برای تبدیل صدا لازم است" -> "Microphone permission is required for speech recognition"
+        "پردازش از ضبط عقب افتاد؛ ضبط متوقف شد و صدای دریافت‌شده در حال تبدیل است" -> "Recognition is catching up; recording stopped while captured speech is transcribed"
         else -> message
     }
 }
@@ -663,7 +666,7 @@ private fun Settings(store: SettingsStore, onBack: () -> Unit) {
             SpeechModeOption(
                 selected = speechMode == SpeechMode.PRIVATE_OFFLINE,
                 enabled = true,
-                title = if(language==AppLanguage.FA) "خصوصی و آفلاین — Shenava" else "Private & offline — Shenava",
+                title = if(language==AppLanguage.FA) "خصوصی و آفلاین — Whisper" else "Private & offline — Whisper",
                 subtitle = if(language==AppLanguage.FA) "بدون اینترنت؛ صدا از گوشی خارج نمی‌شود" else "No internet; speech stays on this device",
                 onClick = { scope.launch { store.setSpeechMode(SpeechMode.PRIVATE_OFFLINE) } },
             )

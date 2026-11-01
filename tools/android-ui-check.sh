@@ -7,7 +7,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk || exit $?
 adb shell am start -W -n com.nameemrooz.journal.preview/com.nameemrooz.journal.MainActivity >out/release-launch.txt || exit $?
 adb shell pidof com.nameemrooz.journal.preview >out/release-process.txt || exit $?
 adb shell am force-stop com.nameemrooz.journal.preview
-gradle --no-daemon -PemroozPreview -PemroozAbi=x86_64 :app:connectedDebugAndroidTest
+gradle --no-daemon -PemroozPreview -PemroozAbi=x86_64 -PemroozReleaseTests :app:connectedReleaseAndroidTest
 result=$?
 mkdir -p out
 adb logcat -d >out/android-logcat.txt

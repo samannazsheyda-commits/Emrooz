@@ -114,12 +114,15 @@ class SystemSpeechEngine(
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, languageTag)
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Optional provider hint. Unsupported services can return plain text.
+            putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY)
+        }
     }
 
-    private fun bestText(results: Bundle?): String =
-        results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-            ?.firstOrNull()
-            .orEmpty()
+    private fun bestText(results: Bundle?): String = SystemSpeechResultPolicy.select(
+        results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty(),
+    )
 
     private fun handlePartial(raw: String) {
         val clean = clean(raw, final = false)

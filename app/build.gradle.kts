@@ -11,13 +11,15 @@ plugins {
 android {
     namespace = "com.nameemrooz.journal"
     compileSdk = 35
+    ndkVersion = "28.2.13676358"
+    testBuildType = if (providers.gradleProperty("emroozReleaseTests").isPresent) "release" else "debug"
 
     defaultConfig {
         applicationId = "com.nameemrooz.journal"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "2.2.3"
+        versionCode = 40
+        versionName = "2.3.0"
         manifestPlaceholders["applicationLabel"] = "امروز"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         if (providers.gradleProperty("emroozPreview").isPresent) {
@@ -56,6 +58,9 @@ android {
         release {
             isDebuggable = false
             isJniDebuggable = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (providers.gradleProperty("emroozPreview").isPresent) {
                 signingConfigs.getByName("debug")
             } else {
@@ -71,8 +76,10 @@ android {
 
     buildFeatures { compose = true; buildConfig = true }
 
+    sourceSets.getByName("main").assets.exclude("models/shenava*/**", "models/whisper/ggml-base-q5_1.bin*", "models/punctuation47/punct_cap_seg_47lang.onnx")
+
     androidResources {
-        noCompress += "onnx"
+        noCompress += listOf("onnx", "bin")
     }
 
     packaging {
@@ -82,98 +89,85 @@ android {
     }
 }
 
-val modelDir = layout.projectDirectory.dir("src/main/assets/models/shenava_v15_rnnt_int8")
-
-data class ModelAsset(val name: String, val url: String, val sha256: String)
-val modelAssets = listOf(
-    ModelAsset("encoder.int8.onnx", "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/encoder.int8.onnx?download=true", "b9d975c1af77002f83897017e3adaaa6510148c6ba332df92b8d281369f2fdd3"),
-    ModelAsset("decoder.int8.onnx", "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/decoder.int8.onnx?download=true", "0adaad326a536dfbb30c67287e909b4e6f0775fccb8c3ca47270890364824947"),
-    ModelAsset("joiner.int8.onnx", "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/joiner.int8.onnx?download=true", "e441ed265c961ff4a2436aa8bc36638e65849445e7a1f65cf263f0c310593dde"),
-    ModelAsset("tokens.txt", "https://huggingface.co/Reza2kn/Shenava-Koochik-v1.5-RNNT-sherpa-onnx/resolve/main/tokens.txt?download=true", "8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954")
-)
-
 fun File.sha256(): String {
     val md = MessageDigest.getInstance("SHA-256")
     inputStream().buffered().use { input ->
         val buffer = ByteArray(1024 * 1024)
         while (true) {
-            val n = input.read(buffer)
-            if (n <= 0) break
-            md.update(buffer, 0, n)
+            val count = input.read(buffer)
+            if (count <= 0) break
+            md.update(buffer, 0, count)
         }
     }
     return md.digest().joinToString("") { "%02x".format(it) }
 }
 
-val fetchShenavaRnntModel by tasks.registering {
+fun downloadVerified(url: String, target: File, digest: String) {
+    if (target.exists() && target.sha256() == digest) return
+    target.parentFile.mkdirs()
+    val temp = File(target.path + ".part")
+    try {
+        URL(url).openConnection().apply { connectTimeout = 30_000; readTimeout = 180_000 }
+            .getInputStream().use { input -> temp.outputStream().buffered().use { input.copyTo(it) } }
+        check(temp.sha256() == digest) { "Model checksum mismatch: ${target.name}" }
+        temp.copyTo(target, overwrite = true)
+    } finally { temp.delete() }
+}
+
+data class WhisperAsset(val name: String, val url: String, val hash: String)
+val whisperAssets = listOf(
+    WhisperAsset("ggml-base-persian-q8_0.bin",
+        "https://huggingface.co/armantee/whisper-base-persian-ggml/resolve/ea634cb5f241db4234de61cec5353c356868c88e/ggml-base-persian-q8_0.bin?download=true",
+        "a8bcb0746be5c9741ba8d1c87c89cccb6fa1452e7878275071f5165a7c43f4a7"),
+    WhisperAsset("ggml-tiny.en-q5_1.bin",
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en-q5_1.bin?download=true",
+        "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b")
+)
+val whisperDir = layout.projectDirectory.dir("src/main/assets/models/whisper")
+val fetchWhisperModel by tasks.registering {
     group = "model"
-    description = "Downloads and verifies Shenava Koochik v1.5 RNNT INT8."
-    outputs.dir(modelDir)
+    inputs.property("models", whisperAssets.joinToString { it.hash })
+    outputs.dir(whisperDir)
     doLast {
-        val dir = modelDir.asFile
-        dir.mkdirs()
-        modelAssets.forEach { asset ->
-            val out = File(dir, asset.name)
-            if (!out.exists() || out.length() < 1024) {
-                val tmp = File(dir, asset.name + ".part")
-                tmp.delete()
-                println("Downloading ${asset.name} ...")
-                URL(asset.url).openStream().use { input ->
-                    tmp.outputStream().buffered(1024 * 1024).use { output -> input.copyTo(output, 1024 * 1024) }
-                }
-                if (!tmp.renameTo(out)) { tmp.copyTo(out, overwrite = true); tmp.delete() }
-            }
-            val actual = out.sha256()
-            check(actual.equals(asset.sha256, ignoreCase = true)) {
-                "SHA-256 mismatch for ${asset.name}: expected=${asset.sha256} actual=$actual"
-            }
-            println("${asset.name}: ${out.length()} bytes sha256=$actual")
+        whisperAssets.forEach { asset ->
+            val target = File(whisperDir.asFile, asset.name)
+            downloadVerified(asset.url, target, asset.hash)
+            File(target.path + ".sha256").writeText(asset.hash + "\n")
         }
     }
 }
 
+val punctuationHash = "fa630cad87cdf398422aee51c66fda532b82dc8164d9653a588277a2ea98adcb"
 val punctuationDir = layout.projectDirectory.dir("src/main/assets/models/punctuation47")
-val punctuationModelUrl = "https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_47_language/resolve/1b9d51f/punct_cap_seg_47lang.onnx?download=true"
-val punctuationTokenizerUrl = "https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_47_language/resolve/1b9d51f/spe_unigram_64k_lowercase_47lang.model?download=true"
-val punctuationModelSha256 = "640d91c06b7cc5b3e065c12a7097188378aad3bc11568ff1d72c4c0a2acb0df4"
-
 val fetchPunctuationModel by tasks.registering {
     group = "model"
-    description = "Downloads the local 47-language punctuation model (includes Persian)."
+    inputs.file(rootProject.file("tools/quantize-punctuation.py"))
     outputs.dir(punctuationDir)
     doLast {
         val dir = punctuationDir.asFile.apply { mkdirs() }
-        val model = File(dir, "punct_cap_seg_47lang.onnx")
-        if (!model.exists() || model.length() < 10_000_000L) {
-            val tmp = File(dir, model.name + ".part")
-            tmp.delete()
-            URL(punctuationModelUrl).openStream().use { input ->
-                tmp.outputStream().buffered(1024 * 1024).use { output -> input.copyTo(output, 1024 * 1024) }
-            }
-            if (!tmp.renameTo(model)) { tmp.copyTo(model, overwrite = true); tmp.delete() }
+        val model = File(dir, "punctuation-int8.onnx")
+        if (!model.exists() || model.sha256() != punctuationHash) {
+            val original = layout.buildDirectory.file("model-source/punct_cap_seg_47lang.onnx").get().asFile
+            downloadVerified(
+                "https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_47_language/resolve/1b9d51f/punct_cap_seg_47lang.onnx?download=true",
+                original, "640d91c06b7cc5b3e065c12a7097188378aad3bc11568ff1d72c4c0a2acb0df4")
+            val python = providers.gradleProperty("emroozModelPython")
+                .orElse(providers.environmentVariable("EMROOZ_MODEL_PYTHON")).getOrElse("python3")
+            providers.exec {
+                commandLine(python, rootProject.file("tools/quantize-punctuation.py").absolutePath,
+                    original.absolutePath, model.absolutePath)
+            }.result.get().assertNormalExitValue()
         }
-        check(model.sha256().equals(punctuationModelSha256, ignoreCase = true)) {
-            "SHA-256 mismatch for punctuation model: ${model.sha256()}"
-        }
-
-        val tokenizer = File(dir, "spe_unigram_64k_lowercase_47lang.model")
-        if (!tokenizer.exists() || tokenizer.length() < 500_000L) {
-            val tmp = File(dir, tokenizer.name + ".part")
-            tmp.delete()
-            URL(punctuationTokenizerUrl).openStream().use { input ->
-                tmp.outputStream().buffered(1024 * 1024).use { output -> input.copyTo(output, 1024 * 1024) }
-            }
-            if (!tmp.renameTo(tokenizer)) { tmp.copyTo(tokenizer, overwrite = true); tmp.delete() }
-        }
-        check(tokenizer.sha256() == "1bc15b6e5fd80dfac9999582ce3efcad2ac1f7cf4e0e9769b329f5de9ca5af47") {
-            "Punctuation tokenizer checksum mismatch"
-        }
-        println("punctuation model: ${model.length()} bytes sha256=${model.sha256()}")
-        println("punctuation tokenizer: ${tokenizer.length()} bytes sha256=${tokenizer.sha256()}")
+        check(model.sha256() == punctuationHash) { "Quantized punctuation model checksum mismatch" }
+        downloadVerified(
+            "https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_47_language/resolve/1b9d51f/spe_unigram_64k_lowercase_47lang.model?download=true",
+            File(dir, "spe_unigram_64k_lowercase_47lang.model"),
+            "1bc15b6e5fd80dfac9999582ce3efcad2ac1f7cf4e0e9769b329f5de9ca5af47")
+        check(!File(dir, "punct_cap_seg_47lang.onnx").exists()) { "Obsolete large model must not be packaged" }
     }
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchWhisperModel, fetchPunctuationModel) }
 
 kapt {
     correctErrorTypes = true
@@ -201,7 +195,7 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
-    implementation("com.github.k2-fsa:sherpa-onnx:v1.13.4")
+    implementation(project(":whisper-runtime"))
 
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("io.github.eix128:sentencepiece4j:1.0.2")

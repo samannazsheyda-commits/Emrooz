@@ -51,7 +51,12 @@ class SettingsStore internal constructor(private val preferences: DataStore<Pref
             .getOrDefault(UiScale.MEDIUM)
     }
     val speechMode = preferences.data.map { preferences ->
-        SpeechMode.fromStored(preferences[speechModeKey])
+        val selected = SpeechMode.fromStored(preferences[speechModeKey])
+        // A restored/legacy preference must never opt someone into a phone service
+        // before they have accepted its network-processing disclosure.
+        if (selected == SpeechMode.SYSTEM_HIGH_ACCURACY && preferences[highAccuracyDisclosureKey] != true) {
+            SpeechMode.PRIVATE_OFFLINE
+        } else selected
     }
     val highAccuracyDisclosureAccepted = preferences.data.map { it[highAccuracyDisclosureKey] ?: false }
     val enhancedOnDeviceEditingEnabled = preferences.data.map { it[enhancedOnDeviceEditingKey] ?: true }

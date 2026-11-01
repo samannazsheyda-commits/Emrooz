@@ -5,11 +5,9 @@ import sys
 import zipfile
 
 EXPECTED = {
-    'models/shenava_v15_rnnt_int8/encoder.int8.onnx': 'b9d975c1af77002f83897017e3adaaa6510148c6ba332df92b8d281369f2fdd3',
-    'models/shenava_v15_rnnt_int8/decoder.int8.onnx': '0adaad326a536dfbb30c67287e909b4e6f0775fccb8c3ca47270890364824947',
-    'models/shenava_v15_rnnt_int8/joiner.int8.onnx': 'e441ed265c961ff4a2436aa8bc36638e65849445e7a1f65cf263f0c310593dde',
-    'models/shenava_v15_rnnt_int8/tokens.txt': '8e192963f6e666dfa5721e5cbd4710bc1ef592460a45f08cefc94b2db16a6954',
-    'models/punctuation47/punct_cap_seg_47lang.onnx': '640d91c06b7cc5b3e065c12a7097188378aad3bc11568ff1d72c4c0a2acb0df4',
+    'models/whisper/ggml-base-persian-q8_0.bin': 'a8bcb0746be5c9741ba8d1c87c89cccb6fa1452e7878275071f5165a7c43f4a7',
+    'models/whisper/ggml-tiny.en-q5_1.bin': 'c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b',
+    'models/punctuation47/punctuation-int8.onnx': 'fa630cad87cdf398422aee51c66fda532b82dc8164d9653a588277a2ea98adcb',
     'models/punctuation47/spe_unigram_64k_lowercase_47lang.model': '1bc15b6e5fd80dfac9999582ce3efcad2ac1f7cf4e0e9769b329f5de9ca5af47',
 }
 
@@ -22,5 +20,11 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
         with apk.open('assets/' + name) as asset:
             actual = hashlib.file_digest(asset, 'sha256').hexdigest()
         assert actual == digest, f'Checksum mismatch: {name}'
-    assert any(name.endswith('libsherpa-onnx-jni.so') for name in apk.namelist()), 'Missing RNNT runtime'
-print('APK ZIP, six model/tokenizer hashes and arm64 runtime: PASS')
+    assert any(name.endswith('libemrooz_whisper.so') for name in apk.namelist()), 'Missing Whisper runtime'
+    assert not any('shenava' in name.lower() or 'sherpa' in name.lower() for name in apk.namelist()), 'Obsolete speech model/runtime packaged'
+    models = {name.removeprefix('assets/') for name in apk.namelist() if name.startswith('assets/models/') and not name.endswith('/')}
+    assert models == set(EXPECTED) | {name + '.sha256' for name in EXPECTED if name.startswith('models/whisper/')}, f'Unexpected model assets: {models}'
+    for name, digest in EXPECTED.items():
+        if name.startswith('models/whisper/'):
+            assert apk.read('assets/' + name + '.sha256').decode().strip() == digest
+print('APK ZIP, four model/tokenizer hashes, no Shenava and arm64 Whisper runtime: PASS')

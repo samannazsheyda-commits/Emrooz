@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.rule.GrantPermissionRule
 import com.nameemrooz.journal.data.SettingsStore
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
@@ -18,6 +19,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class JournalFlowTest {
     @get:Rule val compose = createEmptyComposeRule()
+    @get:Rule val microphone = GrantPermissionRule.grant(android.Manifest.permission.RECORD_AUDIO)
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
 
     @Before fun prepare() = runBlocking {
@@ -99,6 +101,39 @@ class JournalFlowTest {
             }
             compose.onNodeWithText(secret).assertDoesNotExist()
             org.junit.Assert.assertEquals(secret, context.getSharedPreferences("emrooz_draft", Context.MODE_PRIVATE).getString("text", null))
+        }
+    }
+
+    @Test fun record_again_confirms_discards_only_the_draft_and_restarts_capture() {
+        val savedText = "نوشتهٔ ذخیره‌شده باقی بماند"
+        val db = com.nameemrooz.journal.data.AppDatabase.get(context)
+        val id = runBlocking {
+            SettingsStore(context).setSpeechMode(com.nameemrooz.journal.speech.SpeechMode.PRIVATE_OFFLINE)
+            db.journalDao().insert(com.nameemrooz.journal.model.JournalEntry(title="", text=savedText, createdAt=System.currentTimeMillis()))
+        }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForHome()
+            compose.onNodeWithText("نوشتن با صفحه‌کلید").performClick()
+            compose.onNode(hasSetTextAction()).performTextInput("نوشتهٔ قبلی ضبط")
+            compose.waitUntil(60_000) {
+                compose.onAllNodes(hasText("ضبط دوباره") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("ضبط دوباره").performClick()
+            compose.onNodeWithText("انصراف").performClick()
+            compose.onNode(hasSetTextAction()).assertTextEquals("نوشتهٔ قبلی ضبط")
+            compose.onNodeWithText("ضبط دوباره").performClick()
+            compose.onNodeWithText("نوشتهٔ ذخیره‌نشده پاک می‌شود. نوشته‌های ذخیره‌شده باقی می‌مانند.").assertIsDisplayed()
+            compose.onNodeWithText("پاک کردن و ضبط دوباره").performClick()
+            compose.waitUntil(60_000) {
+                compose.onAllNodesWithContentDescription("توقف").fetchSemanticsNodes().isNotEmpty()
+            }
+            val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            compose.waitUntil(5_000) { audio.activeRecordingConfigurations.isNotEmpty() }
+            org.junit.Assert.assertTrue("Record Again did not start the microphone", audio.activeRecordingConfigurations.isNotEmpty())
+            compose.onNodeWithText("نوشتهٔ قبلی ضبط").assertDoesNotExist()
+            org.junit.Assert.assertEquals("", context.getSharedPreferences("emrooz_draft", Context.MODE_PRIVATE).getString("text", null))
+            org.junit.Assert.assertEquals(savedText, runBlocking { db.journalDao().byId(id)?.text })
+            compose.onNodeWithContentDescription("توقف").performClick()
         }
     }
 

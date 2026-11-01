@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.io.File
 
 class NameEmroozApplication : Application(), Configuration.Provider {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -20,6 +21,11 @@ class NameEmroozApplication : Application(), Configuration.Provider {
         super.onCreate()
         // Reminder contains no journal content and is scheduled locally only.
         appScope.launch {
+            // Reclaim only the superseded model cache after upgrading; notes are untouched.
+            val modelCache = File(cacheDir, "emrooz-punctuation")
+            listOf("punctuation47.onnx", "punctuation47.onnx.part").forEach {
+                File(modelCache, it).delete()
+            }
             if (SettingsStore(this@NameEmroozApplication).reminderEnabled.first()) {
                 ReminderWorker.schedule(this@NameEmroozApplication)
             }

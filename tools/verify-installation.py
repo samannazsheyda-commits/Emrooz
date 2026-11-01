@@ -28,6 +28,7 @@ def main():
     parser.add_argument("apk", type=Path)
     parser.add_argument("--build-tools", type=Path, required=True)
     parser.add_argument("--preview", action="store_true", help="CI only: allow the preview ID and debug certificate")
+    parser.add_argument("--application-id", help="Explicit expected ID for a separately signed in-place update")
     args = parser.parse_args()
 
     def run(tool, *arguments):
@@ -38,7 +39,7 @@ def main():
     run("zipalign", "-P", "16", "-c", "4", apk)
     badging = run("aapt", "dump", "badging", apk)
     manifest = run("aapt", "dump", "xmltree", apk, "AndroidManifest.xml")
-    package = "com.nameemrooz.journal.preview" if args.preview else "com.nameemrooz.journal"
+    package = args.application_id or ("com.nameemrooz.journal.preview" if args.preview else "com.nameemrooz.journal")
     validate_metadata(badging, manifest, certificate, package, args.preview)
     print("APK signature, alignment, launcher name, application ID and release flags: PASS")
     if args.preview:
