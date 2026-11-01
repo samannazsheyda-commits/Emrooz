@@ -62,7 +62,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 3072
-          script: bash tools/android-viewport-check.sh
+          script: EMROOZ_INSTRUMENTATION_CLASS=com.nameemrooz.journal.StoreAssetsTest bash tools/android-viewport-check.sh
       - name: Print regression results
         if: always()
         run: |

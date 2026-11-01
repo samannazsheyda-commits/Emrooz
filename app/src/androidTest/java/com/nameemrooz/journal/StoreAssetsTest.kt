@@ -59,6 +59,16 @@ class StoreAssetsTest {
         file.parentFile?.mkdirs()
         file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
         bitmap.recycle()
+        // connectedAndroidTest uninstalls its target and removes app-specific files.
+        // Preserve only these requested synthetic screenshots in the emulator's public folder.
+        val destination = "/sdcard/Download/Emrooz-Store-Screenshots/$theme"
+        fun shell(command: String) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+            ).use { it.readBytes() }
+        }
+        shell("mkdir -p $destination")
+        shell("cp ${file.absolutePath} $destination/$name.png")
     }
 
     @Test fun capture_real_light_and_dark_journal_screens() {
