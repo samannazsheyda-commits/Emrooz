@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.NameEmrooz" parent="Theme.NameEmrooz.Base">
+        <item name="android:windowLightNavigationBar">@bool/splash_light_system_bars</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_system_logo</item>
+    </style>
+</resources>

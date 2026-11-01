@@ -1,0 +1,57 @@
+name: Diagnose v2.0.4 Beta4 Toolchain
+
+on:
+  push:
+    branches: [work/gemini-nano-editor-v204]
+    paths:
+      - '.github/workflows/diagnose-v204-beta4-toolchain.yml'
+
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Reconstruct and apply minimal toolchain experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz
+          tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+          cp hybrid_v204/build.gradle.kts /tmp/emrooz/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/emrooz/build.gradle.kts')
+          s=root.read_text()
+          s=s.replace('id("com.android.application") version "8.8.2"', 'id("com.android.application") version "8.13.2"')
+          s=s.replace('version "2.0.21"', 'version "2.3.21"')
+          root.write_text(s)
+          app=Path('/tmp/emrooz/app/build.gradle.kts')
+          s=app.read_text().replace('kotlinx-coroutines-android:1.10.1', 'kotlinx-coroutines-android:1.11.0')
+          s=s.replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }','')
+          app.write_text(s)
+          PY
+          MAIN=/tmp/emrooz/app/src/main/java/com/nameemrooz/journal/writing
+          TEST=/tmp/emrooz/app/src/test/java/com/nameemrooz/journal/writing
+          mkdir -p "$MAIN" "$TEST"
+          for f in PunctuationRestorer.kt LexicalSafety.kt TextEditor.kt; do cp "hybrid_v203/$f" "$MAIN/$f"; done
+          cp hybrid_v203/TextEditorSafetyTest.kt "$TEST/TextEditorSafetyTest.kt"
+          for f in WritingEnhancer.kt WritingEditSafety.kt NanoPromptClient.kt MlKitNanoPromptClient.kt GeminiNanoWritingEnhancer.kt; do cp "hybrid_v204/$f" "$MAIN/$f"; done
+          cp hybrid_v204/WritingEditSafetyTest.kt "$TEST/WritingEditSafetyTest.kt"
+          cp hybrid_v204/GeminiNanoWritingEnhancerTest.kt "$TEST/GeminiNanoWritingEnhancerTest.kt"
+      - name: Compile and test beta4 adapter
+        working-directory: /tmp/emrooz
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest --tests '*WritingEditSafetyTest*' --tests '*TextEditorSafetyTest*' --tests '*GeminiNanoWritingEnhancerTest*' :app:compileDebugKotlin

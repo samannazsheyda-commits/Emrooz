@@ -1,0 +1,12 @@
+# Reproduce punctuation quantization and the CPU comparison (Python 3.12).
+onnx==1.17.0
+onnxruntime==1.20.1
+sentencepiece==0.2.0
+numpy==2.1.3
+protobuf==7.36.2
+coloredlogs==15.0.1
+flatbuffers==25.12.19
+packaging==26.3
+sympy==1.14.0
+humanfriendly==10.0
+mpmath==1.3.0

@@ -1,0 +1,15 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+.idea/
+*.iml
+*.jks
+*.keystore
+app/src/main/assets/models/
+out/
+.superpowers/
+__pycache__/
+**/.cxx/
+**/.externalNativeBuild/
+.model-venv/

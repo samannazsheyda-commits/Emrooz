@@ -1,0 +1,113 @@
+name: TDD Emrooz v2.0.4 Unit
+
+on:
+  push:
+    branches: [work/gemini-nano-editor-v204]
+    paths:
+      - 'hybrid_v204/**'
+      - '.github/workflows/tdd-v204-unit.yml'
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Reconstruct project
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/transfer.b64
+          for i in $(seq 0 27); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          cat payload/v201.part028.a payload/v201.part028.b payload/v201.part028.c payload/v201.part028.d >> /tmp/transfer.b64
+          for i in $(seq 29 40); do printf -v p '%03d' "$i"; cat "payload/v201.part${p}" >> /tmp/transfer.b64; done
+          tr -d '\r\n' < /tmp/transfer.b64 | base64 -d > /tmp/transfer.tar.xz
+          echo '8ee6d03b5243d4818d65daaec44fae8d713231a8e6bf1f51bc4eeafae2db210b  /tmp/transfer.tar.xz' | sha256sum -c -
+          rm -rf /tmp/emrooz && mkdir -p /tmp/emrooz
+          tar -xJf /tmp/transfer.tar.xz -C /tmp/emrooz
+          cp hybrid_v204/root-build.gradle.kts /tmp/emrooz/build.gradle.kts
+          cp hybrid_v204/build.gradle.kts /tmp/emrooz/app/build.gradle.kts
+      - name: Apply v2.0.3 base and v2.0.4 editor overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=/tmp/emrooz/app/src/main
+          MAIN=/tmp/emrooz/app/src/main/java/com/nameemrooz/journal
+          TEST=/tmp/emrooz/app/src/test/java/com/nameemrooz/journal
+          mkdir -p "$MAIN/writing" "$MAIN/speech" "$MAIN/data" "$MAIN/ui/theme" "$MAIN/privacy" "$MAIN/util" "$TEST/writing" "$TEST/speech"
+
+          cp approved_ui/Theme.kt "$MAIN/ui/theme/Theme.kt"
+          cp approved_ui/AppViewModel.kt "$MAIN/ui/AppViewModel.kt"
+          cp approved_ui/BiometricGate.kt "$MAIN/privacy/BiometricGate.kt"
+          cp approved_ui/MainActivity.kt "$MAIN/MainActivity.kt"
+          cp hybrid_v203/AndroidManifest.xml "$APP/AndroidManifest.xml"
+          cp hybrid_v203/JalaliDate.kt "$MAIN/util/JalaliDate.kt"
+          cp hybrid_v204/SettingsStore.kt "$MAIN/data/SettingsStore.kt"
+
+          for f in SpeechEngine.kt SpeechMode.kt SystemSpeechEngine.kt SystemSpeechErrorPolicy.kt TranscriptContinuity.kt LiveSpeechEngine.kt; do
+            cp "hybrid_v203/$f" "$MAIN/speech/$f"
+          done
+          cp hybrid_v204/HybridSpeechController.kt "$MAIN/speech/HybridSpeechController.kt"
+
+          for f in PunctuationRestorer.kt LexicalSafety.kt TextEditor.kt LocalPunctuationModel.kt StableDisplayComposer.kt; do
+            cp "hybrid_v203/$f" "$MAIN/writing/$f"
+          done
+          for f in WritingEnhancer.kt WritingEditSafety.kt NanoPromptClient.kt MlKitNanoPromptClient.kt GeminiNanoWritingEnhancer.kt LocalWritingEnhancer.kt WritingEnhancementCoordinator.kt; do
+            cp "hybrid_v204/$f" "$MAIN/writing/$f"
+          done
+
+          {
+            cat hybrid_v204/NameEmroozApp.part00; printf '\n'
+            cat hybrid_v203/NameEmroozApp.part01; printf '\n'
+            cat hybrid_v203/NameEmroozApp.part02; printf '\n'
+            cat hybrid_v204/NameEmroozApp.part03; printf '\n'
+            cat hybrid_v203/NameEmroozApp.part04; printf '\n'
+          } > "$MAIN/ui/NameEmroozApp.kt"
+
+          cp hybrid_v203/TextEditorSafetyTest.kt "$TEST/writing/TextEditorSafetyTest.kt"
+          cp hybrid_v203/StableDisplayComposerTest.kt "$TEST/writing/StableDisplayComposerTest.kt"
+          cp hybrid_v203/TranscriptContinuityTest.kt "$TEST/speech/TranscriptContinuityTest.kt"
+          for f in WritingEditSafetyTest.kt GeminiNanoWritingEnhancerTest.kt WritingEnhancementCoordinatorTest.kt; do
+            cp "hybrid_v204/$f" "$TEST/writing/$f"
+          done
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/emrooz/app/build.gradle.kts')
+          s=p.read_text()
+          s=s.replace('tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchShenavaRnntModel, fetchPunctuationModel) }','')
+          p.write_text(s)
+          PY
+      - name: Run unit tests and full debug compile
+        working-directory: /tmp/emrooz
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests '*WritingEditSafetyTest*' \
+            --tests '*TextEditorSafetyTest*' \
+            --tests '*GeminiNanoWritingEnhancerTest*' \
+            --tests '*WritingEnhancementCoordinatorTest*' \
+            --tests '*StableDisplayComposerTest*' \
+            --tests '*TranscriptContinuityTest*' \
+            :app:compileDebugKotlin
+      - name: Verify merged-manifest privacy
+        working-directory: /tmp/emrooz
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:processDebugMainManifest
+          if grep -R "android.permission.INTERNET" app/build/intermediates/merged_manifests app/build/intermediates/merged_manifest 2>/dev/null; then
+            echo 'ERROR: INTERNET permission appeared in merged manifest'
+            exit 1
+          fi
+          if grep -R -F -n '"اصلاح کن"' app/src/main/java 2>/dev/null; then
+            echo 'ERROR: removed voice-edit command returned'
+            exit 1
+          fi
+          echo 'Merged manifest/editor privacy: PASS'

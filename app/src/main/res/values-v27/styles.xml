@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.NameEmrooz" parent="Theme.NameEmrooz.Base">
+        <item name="android:windowLightNavigationBar">@bool/splash_light_system_bars</item>
+    </style>
+</resources>

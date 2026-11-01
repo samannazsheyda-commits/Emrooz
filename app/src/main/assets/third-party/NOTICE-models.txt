@@ -1,0 +1,1 @@
+Punctuation model: punct_cap_seg_47_language by 1-800-BAD-CODE, upstream revision 1b9d51f, locally quantized to INT8 without changing output labels. Source: https://huggingface.co/1-800-BAD-CODE/punct_cap_seg_47_language . Apache-2.0 license included.
