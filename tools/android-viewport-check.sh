@@ -14,10 +14,12 @@ adb shell am broadcast -a com.android.systemui.demo -e command battery -e level 
 test_filter=()
 if [ -n "${EMROOZ_INSTRUMENTATION_CLASS:-}" ]; then
     test_filter+=("-Pandroid.testInstrumentationRunnerArguments.class=$EMROOZ_INSTRUMENTATION_CLASS")
+elif [ "${EMROOZ_SKIP_CAPTURE:-0}" = 1 ]; then
+    test_filter+=("-Pandroid.testInstrumentationRunnerArguments.notClass=com.nameemrooz.journal.StoreAssetsTest")
 fi
 timeout 600s gradle --no-daemon -Dorg.gradle.jvmargs='-Xmx1536m -Dfile.encoding=UTF-8' -PemroozPreview -PemroozAbi=x86_64 -Pandroid.testInstrumentationRunnerArguments.timeout_msec=90000 "${test_filter[@]}" :app:connectedDebugAndroidTest
 result=$?
-if ! adb pull /sdcard/Download/Emrooz-Store-Screenshots out/screenshots; then
+if [ "${EMROOZ_SKIP_CAPTURE:-0}" != 1 ] && ! adb pull /sdcard/Download/Emrooz-Store-Screenshots out/screenshots; then
     printf '%s\n' 'Requested screenshots were not exported from the emulator.'
     result=1
 fi

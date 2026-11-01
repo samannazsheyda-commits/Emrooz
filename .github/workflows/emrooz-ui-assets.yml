@@ -57,6 +57,8 @@ jobs:
           python3 -m unittest discover -s tools/tests -v
           gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
           mkdir -p out
+          cp -r app/build/reports/tests out/jvm-tests
+          cp app/build/reports/lint-results-release.* out/
           cp app/build/outputs/apk/release/app-release-unsigned.apk out/Emrooz-2.3.2-CafeBazaar-unsigned-arm64.apk
           python3 tools/verify-apk.py out/Emrooz-2.3.2-CafeBazaar-unsigned-arm64.apk
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -P 16 -c 4 out/Emrooz-2.3.2-CafeBazaar-unsigned-arm64.apk
@@ -78,7 +80,12 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 3072
-          script: bash tools/android-viewport-check.sh
+          script: EMROOZ_SKIP_CAPTURE=${{ matrix.api == 26 && '1' || '0' }} bash tools/android-viewport-check.sh
+      - name: Verify actual screenshot backgrounds and dimensions
+        if: matrix.api == 35
+        run: |
+          python3 -m pip install Pillow==11.3.0
+          python3 tools/verify-store-shots.py out/screenshots
       - name: Print regression results
         if: always()
         run: |

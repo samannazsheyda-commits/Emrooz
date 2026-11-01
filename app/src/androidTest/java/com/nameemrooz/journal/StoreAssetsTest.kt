@@ -43,6 +43,8 @@ class StoreAssetsTest {
     private fun capture(theme: String, name: String) {
         compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        // Navigation semantics can settle before RenderThread submits the new display frame.
+        android.os.SystemClock.sleep(300)
         val expected = if (theme == "light") android.graphics.Color.rgb(247, 242, 234) else android.graphics.Color.rgb(13, 23, 38)
         var captured: Bitmap? = null
         // FLAG_SECURE updates reach SurfaceFlinger on the next real display frame,

@@ -110,7 +110,7 @@ fun NameEmroozApp(vm: AppViewModel = viewModel(), interactive: Boolean = true) {
     NameEmroozTheme(theme, language, uiScale) {
         val appDirection = if (language == AppLanguage.FA) LayoutDirection.Rtl else LayoutDirection.Ltr
         CompositionLocalProvider(LocalLayoutDirection provides appDirection, LocalButtonFeedback provides buttonFeedback, LocalJournalInteractive provides interactive) {
-            Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), color = MaterialTheme.colorScheme.background) {
+            Surface(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).windowInsetsPadding(WindowInsets.safeDrawing), color = MaterialTheme.colorScheme.background) {
                 when(screen) {
                     Screen.HOME -> Home(settings, language, vm.draft, { vm.saveDraft() }, { screen=Screen.LIST }, { screen=Screen.SETTINGS }, { selected=it; screen=Screen.DETAIL })
                     Screen.LIST -> Entries(language, false, active, { screen=Screen.HOME }, { selected=it; screen=Screen.DETAIL }, { screen=Screen.ARCHIVE }, { screen=Screen.LIST })
