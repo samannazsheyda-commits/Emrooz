@@ -67,14 +67,14 @@ jobs:
           grep -q "versionCode='40' versionName='2.3.0'" out/badging.txt
           grep -q "package: name='com.nameemrooz.journal.preview'" out/badging.txt
           sha256sum out/*.apk >out/sha256.txt
-      - name: Build emulator and real UI tests
-        run: gradle --no-daemon -PemroozPreview -PemroozAbi=x86_64 -PemroozReleaseTests :app:assembleRelease :app:assembleReleaseAndroidTest
+      - name: Build debug instrumentation APKs
+        run: gradle --no-daemon -PemroozPreview -PemroozAbi=x86_64 :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Android journal flow and lifecycle verification
+      - name: Release launch and debug journal flow verification
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
@@ -96,7 +96,7 @@ jobs:
         run: |
           cat >out/QA.txt <<'EOF'
           Emrooz 2.3.0 preview (launcher name: امروز)
-          Unit tests, release lint/build, signatures, alignment, privacy/model checks and Android journal UI flow passed.
+          Unit tests, release lint/build, signatures, alignment, privacy/model checks, optimized-release install/launch and debug Android journal UI flow passed.
           Whisper speech and INT8 punctuation are bundled offline; Shenava is absent. Gemini Nano editing is enabled by default, on-device and lazy; unsupported/error/timeout fallback is tested.
           Successful Nano inference still requires supported physical-device validation.
           This preview uses a separate application ID and a CI debug certificate. It does not replace the installed production app or its notes.

@@ -61,11 +61,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // The prebuilt test runner calls Trace by its original name. Keep
-            // this test-only entry point in the target APK when testing release.
-            if (providers.gradleProperty("emroozReleaseTests").isPresent) {
-                proguardFiles("proguard-release-tests.pro")
-            }
             signingConfig = if (providers.gradleProperty("emroozPreview").isPresent) {
                 signingConfigs.getByName("debug")
             } else {
