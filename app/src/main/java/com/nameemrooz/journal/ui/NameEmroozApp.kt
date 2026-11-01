@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -46,6 +47,10 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.LayoutDirection
@@ -108,8 +113,8 @@ fun NameEmroozApp(vm: AppViewModel = viewModel(), interactive: Boolean = true) {
             Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), color = MaterialTheme.colorScheme.background) {
                 when(screen) {
                     Screen.HOME -> Home(settings, language, vm.draft, { vm.saveDraft() }, { screen=Screen.LIST }, { screen=Screen.SETTINGS }, { selected=it; screen=Screen.DETAIL })
-                    Screen.LIST -> Entries(language, false, active, { screen=Screen.HOME }, { selected=it; screen=Screen.DETAIL }, { screen=Screen.ARCHIVE })
-                    Screen.ARCHIVE -> Entries(language, true, archived, { screen=Screen.LIST }, { selected=it; screen=Screen.DETAIL }, null)
+                    Screen.LIST -> Entries(language, false, active, { screen=Screen.HOME }, { selected=it; screen=Screen.DETAIL }, { screen=Screen.ARCHIVE }, { screen=Screen.LIST })
+                    Screen.ARCHIVE -> Entries(language, true, archived, { screen=Screen.LIST }, { selected=it; screen=Screen.DETAIL }, { screen=Screen.ARCHIVE }, { screen=Screen.LIST })
                     Screen.DETAIL -> Detail(language, selected, { screen=if(selected?.archived==true) Screen.ARCHIVE else Screen.LIST },
                         { entry -> vm.update(entry).also { if(it) selected=entry } },
                         { entry -> vm.delete(entry).also { if(it) screen=Screen.LIST } })
@@ -129,6 +134,7 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
     var listening by remember { mutableStateOf(false) }
     val text by draft.text.collectAsState()
     var saving by remember { mutableStateOf(false) }
+    var saveFailed by remember { mutableStateOf(false) }
     var recordingToken by remember { mutableLongStateOf(0L) }
     var error by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf(false) }
@@ -247,88 +253,132 @@ private fun Home(store: SettingsStore, language: AppLanguage, draft: DraftContro
         )
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal=20.dp, vertical=10.dp), horizontalAlignment=Alignment.CenterHorizontally) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-            GlassIconButton({ if (!listening && !saving) onSettings() }, Icons.Default.Menu, if(language==AppLanguage.FA) "منو" else "Menu")
-            Spacer(Modifier.weight(1f))
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(editing) {
+        if (!editing) { focus.clearFocus(force = true); keyboard?.hide() }
+    }
+    BackHandler(enabled = editing) { editing = false }
+    fun saveCurrentDraft() {
+        if (saving || text.isBlank()) return
+        saving = true
+        saveFailed = false
+        scope.launch {
+            try {
+                if (onSave()) { editing = false; error = null }
+                else {
+                    saveFailed = true
+                    error = if(language == AppLanguage.FA) "ذخیره انجام نشد؛ نوشته حفظ شده است" else "Save failed; your draft is still here"
+                }
+            } finally { saving = false }
+        }
+    }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            GlassIconButton({ if (!listening && !saving) onSettings() }, Icons.Default.Menu, if(language == AppLanguage.FA) "منو" else "Menu")
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = onList,
+                enabled = !listening && !saving,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp),
+            ) {
+                Icon(Icons.Default.AutoStories, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if(language == AppLanguage.FA) "آرشیو نوشته‌ها" else "Notes archive", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+            Spacer(Modifier.width(8.dp))
             FixedLanguageSwitch(language) { if (!listening && !saving) scope.launch { store.setLanguage(it) } }
         }
 
-        Spacer(Modifier.height(14.dp))
-        Text(JalaliDate.pretty(System.currentTimeMillis()), Modifier.fillMaxWidth(), textAlign=if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left, style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(if(language==AppLanguage.FA) "از امروزت بگو" else "Tell me about today", Modifier.fillMaxWidth(), textAlign=if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left, style=MaterialTheme.typography.headlineLarge)
-        Text(if(language==AppLanguage.FA) "تو حرف بزن، من می‌نویسم" else "You talk, I write", Modifier.fillMaxWidth(), textAlign=if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left, style=MaterialTheme.typography.bodyMedium, color=MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(16.dp))
+        if (!editing) {
+            Spacer(Modifier.height(14.dp))
+            Text(JalaliDate.pretty(System.currentTimeMillis()), Modifier.fillMaxWidth(), textAlign = TextAlign.Start, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if(language == AppLanguage.FA) "از امروزت بگو" else "Tell me about today", Modifier.fillMaxWidth(), textAlign = TextAlign.Start, style = MaterialTheme.typography.headlineLarge)
+            Text(if(language == AppLanguage.FA) "تو حرف بزن، من می‌نویسم" else "You talk, I write", Modifier.fillMaxWidth(), textAlign = TextAlign.Start, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.height(if (editing) 10.dp else 16.dp))
 
         LiveTranscriptSurface(listening = listening, modifier = Modifier.fillMaxWidth().weight(1f)) {
-                Column(Modifier.fillMaxSize().padding(horizontal=20.dp, vertical=18.dp)) {
-                    Text(if(listening) { if(language==AppLanguage.FA) "در حال نوشتن…" else "Writing live…" } else { if(language==AppLanguage.FA) "نامهٔ امروز" else "Today’s letter" }, Modifier.fillMaxWidth(), textAlign=if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left, color=MaterialTheme.colorScheme.primary, style=MaterialTheme.typography.titleLarge)
-                    HorizontalDivider(Modifier.padding(vertical=10.dp), color=MaterialTheme.colorScheme.outline.copy(alpha=.42f))
-                    if (editing) {
-                        OutlinedTextField(value=text, onValueChange={draft.edit(it)}, modifier=Modifier.fillMaxSize(), textStyle=MaterialTheme.typography.bodyLarge, shape=RoundedCornerShape(12.dp))
-                    } else {
-                        Text(if(text.isBlank()) { if(language==AppLanguage.FA) "وقتی شروع به صحبت کنی، متن زنده همین‌جا نمایش داده می‌شود." else "Your live transcript will appear here when you start speaking." } else text,
-                            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), textAlign=if(language==AppLanguage.FA) TextAlign.Right else TextAlign.Left, style=MaterialTheme.typography.bodyLarge)
-                    }
+            if (editing) {
+                DraftEditor(text, { draft.edit(it) }, Modifier.padding(12.dp))
+            } else {
+                Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp)) {
+                    Text(if(listening) { if(language == AppLanguage.FA) "در حال نوشتن…" else "Writing live…" } else { if(language == AppLanguage.FA) "نامهٔ امروز" else "Today’s letter" }, Modifier.fillMaxWidth(), textAlign = TextAlign.Start, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge)
+                    HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .42f))
+                    TranscriptText(
+                        text,
+                        if(language == AppLanguage.FA) "وقتی شروع به صحبت کنی، متن زنده همین‌جا نمایش داده می‌شود." else "Your live transcript will appear here when you start speaking.",
+                        Modifier.fillMaxWidth().weight(1f),
+                    )
                     error?.let {
-                        Spacer(Modifier.height(10.dp)); Text(it, color=MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.height(10.dp))
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         if (!ready && speechMode == SpeechMode.PRIVATE_OFFLINE && phoneSpeechAvailable) {
                             TextButton(onClick = { selectPhoneService() }) {
-                                Text(if(language==AppLanguage.FA) "انتخاب سرویس گفتار گوشی" else "Choose device speech service")
+                                Text(if(language == AppLanguage.FA) "انتخاب سرویس گفتار گوشی" else "Choose device speech service")
                             }
                         }
                     }
                 }
+            }
         }
 
-        Spacer(Modifier.height(14.dp))
-        FilledIconButton(
-            onClick={
-                buttonFeedback()
-                if (!ready) { selectPhoneService(); return@FilledIconButton }
-                error=null
-                if(listening) engine.stop()
-                else if(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) startRecording()
-                else {
-                    permissionRequested = true
-                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        Spacer(Modifier.height(12.dp))
+        if (editing) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = { saveCurrentDraft() }, enabled = !saving && text.isNotBlank(), modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Text(if(language == AppLanguage.FA) "ذخیره" else "Save")
                 }
-            },
-            enabled=(ready || (speechMode == SpeechMode.PRIVATE_OFFLINE && error != null && phoneSpeechAvailable)) && !saving,
-            modifier=Modifier.size(78.dp), shape=CircleShape,
-        ) { Icon(if(listening) Icons.Default.Stop else Icons.Default.Mic, if(listening) { if(language==AppLanguage.FA) "توقف" else "Stop" } else { if(language==AppLanguage.FA) "شروع ضبط" else "Start recording" }, Modifier.size(32.dp)) }
-        Text(if(listening) { if(language==AppLanguage.FA) "برای توقف لمس کن" else "Tap to stop" } else { if(language==AppLanguage.FA) "شروع صحبت" else "Start speaking" }, style=MaterialTheme.typography.titleMedium)
-
-        if(text.isNotBlank() && !listening && !saving) {
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                ResultAction(if(language==AppLanguage.FA) "ذخیره" else "Save", Icons.Default.Inventory2, Modifier.weight(1f)) {
-                    saving = true
-                    scope.launch {
-                        try {
-                            if (onSave()) { editing=false; error=null }
-                            else error=if(language==AppLanguage.FA) "ذخیره انجام نشد؛ نوشته حفظ شده است" else "Save failed; your draft is still here"
-                        } finally { saving=false }
+                OutlinedButton(onClick = { editing = false }, enabled = !saving, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 10.dp)) {
+                    Text(if(language == AppLanguage.FA) "پایان ویرایش" else "Done", style = MaterialTheme.typography.labelMedium)
+                }
+                IconButton(onClick = { copyJournalText(context, text, clearClipboard) }, enabled = text.isNotBlank()) {
+                    Icon(Icons.Default.ContentCopy, if(language == AppLanguage.FA) "کپی" else "Copy", Modifier.size(20.dp))
+                }
+                IconButton(onClick = { resetAction = false }, enabled = !saving && text.isNotBlank()) {
+                    Icon(Icons.Default.DeleteOutline, if(language == AppLanguage.FA) "پاک کردن" else "Clear", Modifier.size(20.dp))
+                }
+            }
+            if (saveFailed) error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        } else {
+            FilledIconButton(
+                onClick = {
+                    buttonFeedback()
+                    if (!ready) { selectPhoneService(); return@FilledIconButton }
+                    error = null
+                    if (listening) engine.stop()
+                    else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startRecording()
+                    else {
+                        permissionRequested = true
+                        micPermission.launch(Manifest.permission.RECORD_AUDIO)
                     }
+                },
+                enabled = (ready || (speechMode == SpeechMode.PRIVATE_OFFLINE && error != null && phoneSpeechAvailable)) && !saving,
+                modifier = Modifier.size(78.dp), shape = CircleShape,
+            ) { Icon(if(listening) Icons.Default.Stop else Icons.Default.Mic, if(listening) { if(language == AppLanguage.FA) "توقف" else "Stop" } else { if(language == AppLanguage.FA) "شروع ضبط" else "Start recording" }, Modifier.size(32.dp)) }
+            Text(if(listening) { if(language == AppLanguage.FA) "برای توقف لمس کن" else "Tap to stop" } else { if(language == AppLanguage.FA) "شروع صحبت" else "Start speaking" }, style = MaterialTheme.typography.titleMedium)
+
+            if (text.isNotBlank() && !listening && !saving) {
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ResultAction(if(language == AppLanguage.FA) "ذخیره" else "Save", Icons.Default.Inventory2, Modifier.weight(1f)) { saveCurrentDraft() }
+                    ResultAction(if(language == AppLanguage.FA) "ویرایش" else "Edit", Icons.Default.Edit, Modifier.weight(1f)) { editing = true }
+                    ResultAction(if(language == AppLanguage.FA) "کپی" else "Copy", Icons.Default.ContentCopy, Modifier.weight(1f)) { copyJournalText(context, text, clearClipboard) }
                 }
-                ResultAction(if(language==AppLanguage.FA) "ویرایش" else "Edit", Icons.Default.Edit, Modifier.weight(1f)) { editing=!editing }
-                ResultAction(if(language==AppLanguage.FA) "کپی" else "Copy", Icons.Default.ContentCopy, Modifier.weight(1f)) {
-                    copyJournalText(context, text, clearClipboard)
+            }
+            if (text.isBlank() && !listening) {
+                TextButton(onClick = { editing = true }) { Text(if(language == AppLanguage.FA) "نوشتن با صفحه‌کلید" else "Write with keyboard") }
+            }
+            if ((text.isNotBlank() || listening) && !saving) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    TextButton(onClick = { resetAction = false }) { Text(if(language == AppLanguage.FA) "پاک کردن" else "Clear") }
+                    TextButton(onClick = { if (ready) resetAction = true else selectPhoneService() }, enabled = ready || (speechMode == SpeechMode.PRIVATE_OFFLINE && error != null && phoneSpeechAvailable)) { Text(if(language == AppLanguage.FA) "ضبط دوباره" else "Record again") }
                 }
             }
         }
-        if (text.isBlank() && !listening && !editing) {
-            TextButton(onClick={ editing=true }) {
-                Text(if(language==AppLanguage.FA) "نوشتن با صفحه‌کلید" else "Write with keyboard")
-            }
-        }
-        if ((text.isNotBlank() || listening) && !saving) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceEvenly) {
-                TextButton(onClick={ resetAction=false }) { Text(if(language==AppLanguage.FA) "پاک کردن" else "Clear") }
-                TextButton(onClick={ if (ready) resetAction=true else selectPhoneService() }, enabled=ready || (speechMode == SpeechMode.PRIVATE_OFFLINE && error != null && phoneSpeechAvailable)) { Text(if(language==AppLanguage.FA) "ضبط دوباره" else "Record again") }
-            }
-        }
-        TextButton(onClick=onList, enabled=!listening && !saving) { Text(if(language==AppLanguage.FA) "آرشیو نوشته‌ها" else "Notes archive") }
     }
 }
 
@@ -472,48 +522,60 @@ private fun Entries(
     entries: List<JournalEntry>,
     onBack: () -> Unit,
     onEntry: (JournalEntry) -> Unit,
-    onArchive: (() -> Unit)?,
+    onArchive: () -> Unit,
+    onActive: () -> Unit,
 ) {
-    val title = if (language == AppLanguage.FA) {
-        if (archivedScreen) "آرشیو" else "نوشته‌های قبلی"
-    } else {
-        if (archivedScreen) "Archive" else "Previous notes"
-    }
-    val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left
+    val fa = language == AppLanguage.FA
+    val title = if (fa) { if (archivedScreen) "آرشیو" else "نوشته‌های قبلی" }
+        else { if (archivedScreen) "Archive" else "Previous notes" }
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GlassIconButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, if(language==AppLanguage.FA) "برگشت" else "Back")
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            GlassIconButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, if(fa) "برگشت" else "Back")
             Spacer(Modifier.width(12.dp))
-            Text(title, Modifier.weight(1f), textAlign = align, style = MaterialTheme.typography.headlineMedium)
+            Text(title, Modifier.weight(1f), textAlign = TextAlign.Start, style = MaterialTheme.typography.headlineMedium)
         }
-        Spacer(Modifier.height(18.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            items(entries, key = { it.id }) { e ->
-                Surface(
-                    onClick = { onEntry(e) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha=.78f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=.55f)),
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+        Spacer(Modifier.height(14.dp))
+        TabRow(selectedTabIndex = if (archivedScreen) 1 else 0, containerColor = Color.Transparent) {
+            Tab(selected = !archivedScreen, onClick = onActive, text = { Text(if(fa) "همهٔ نوشته‌ها" else "All notes") })
+            Tab(selected = archivedScreen, onClick = onArchive, text = { Text(if(fa) "آرشیوشده‌ها" else "Archived") })
+        }
+        if (entries.isEmpty()) {
+            Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.AutoStories, null, Modifier.size(38.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(16.dp))
+                Text(if(fa) { if(archivedScreen) "هنوز نوشته‌ای آرشیو نشده" else "هنوز نوشته‌ای ذخیره نشده" }
+                    else { if(archivedScreen) "No archived notes yet" else "No saved notes yet" }, style = MaterialTheme.typography.titleMedium)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(top = 16.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                items(entries, key = { it.id }) { entry ->
+                    Surface(
+                        onClick = { onEntry(entry) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = .78f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .55f)),
                     ) {
-                        Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f), horizontalAlignment = if(language==AppLanguage.FA) Alignment.End else Alignment.Start) {
-                            Text(JalaliDate.weekday(e.createdAt), style = MaterialTheme.typography.titleMedium)
-                            Text(JalaliDate.date(e.createdAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.Start) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Text(JalaliDate.weekday(entry.createdAt), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                                Text(JalaliDate.time(entry.createdAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(JalaliDate.date(entry.createdAt), Modifier.padding(start = 28.dp, top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(14.dp))
+                            Text(entry.text.trim(), Modifier.fillMaxWidth(), textAlign = TextAlign.Start, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(12.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            }
                         }
-                        Text(JalaliDate.time(e.createdAt), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(6.dp))
-                        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
                 }
-            }
-            if (onArchive != null) item {
-                TextButton(onClick = onArchive, Modifier.fillMaxWidth()) { Text(if(language==AppLanguage.FA) "آرشیو" else "Archive") }
             }
         }
     }
@@ -544,7 +606,8 @@ private fun Detail(
             } finally { saving=false }
         }
     }
-    val align = if (language == AppLanguage.FA) TextAlign.Right else TextAlign.Left
+    val align = TextAlign.Start
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     if (confirmDelete && LocalJournalInteractive.current) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -566,8 +629,11 @@ private fun Detail(
         Row(verticalAlignment=Alignment.CenterVertically) {
             GlassIconButton(onBack, Icons.AutoMirrored.Filled.ArrowBack, if(language==AppLanguage.FA) "برگشت" else "Back")
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), horizontalAlignment = if(language==AppLanguage.FA) Alignment.End else Alignment.Start) {
-                Text(JalaliDate.weekday(entry.createdAt), textAlign=align, style=MaterialTheme.typography.titleLarge)
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                if (!imeVisible) {
+                    Text(JalaliDate.weekday(entry.createdAt), textAlign=align, style=MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(4.dp))
+                }
                 Text("${JalaliDate.date(entry.createdAt)}  •  ${JalaliDate.time(entry.createdAt)}", textAlign=align, style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.primary)
             }
         }
@@ -584,7 +650,7 @@ private fun Detail(
 
             Text(if(language==AppLanguage.FA) "ذخیره تغییرات" else "Save changes")
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
+        if (!imeVisible) Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
             TextButton(onClick={saveEntry(entry.copy(text=text, archived=!entry.archived))}, enabled=!saving && text.isNotBlank()) { Text(if(language==AppLanguage.FA) { if(entry.archived) "برگرداندن" else "انتقال به آرشیو" } else { if(entry.archived) "Restore" else "Move to archive" }) }
             TextButton(onClick={confirmDelete=true}, enabled=!saving) { Text(if(language==AppLanguage.FA) "حذف" else "Delete", color=MaterialTheme.colorScheme.error) }
         }

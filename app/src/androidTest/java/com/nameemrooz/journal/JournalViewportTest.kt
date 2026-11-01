@@ -91,6 +91,16 @@ class JournalViewportTest {
         }
     }
 
+    @Test fun large_interface_editor_keeps_a_useful_viewport_above_keyboard() {
+        runBlocking { SettingsStore(context).setUiScale(UiScale.LARGE) }
+        context.getSharedPreferences("emrooz_draft", Context.MODE_PRIVATE).edit().putString("text", longText).commit()
+        ActivityScenario.launch(MainActivity::class.java).use { activity ->
+            home()
+            compose.onNodeWithText("ویرایش").performClick()
+            assertUsableEditorAboveKeyboard(activity, "ذخیره")
+        }
+    }
+
     @Test fun archive_is_reachable_without_scrolling_past_saved_notes_and_rows_show_text_preview() {
         val timestamp = 1_793_534_400_000L
         runBlocking {
@@ -107,16 +117,17 @@ class JournalViewportTest {
             compose.onNodeWithText("یادداشت آرشیوشده", substring=true).assertIsDisplayed().performClick()
             compose.onNode(hasSetTextAction()).assertTextEquals("یادداشت آرشیوشده")
             compose.onNodeWithText("برگرداندن").performClick()
-            compose.onNodeWithText("تغییرات ذخیره شد").assertIsDisplayed()
+            compose.waitUntil(5_000) { compose.onAllNodesWithText("تغییرات ذخیره شد").fetchSemanticsNodes().isNotEmpty() }
         }
     }
 
     @Test fun saved_note_editor_keeps_save_above_keyboard() {
-        runBlocking { AppDatabase.get(context).journalDao().insert(JournalEntry(title="", text=longText, createdAt=System.currentTimeMillis())) }
+        val timestamp = System.currentTimeMillis()
+        runBlocking { AppDatabase.get(context).journalDao().insert(JournalEntry(title="", text=longText, createdAt=timestamp)) }
         ActivityScenario.launch(MainActivity::class.java).use { activity ->
             home()
             compose.onNodeWithText("آرشیو نوشته‌ها").performClick()
-            compose.onNodeWithText(com.nameemrooz.journal.util.JalaliDate.time(System.currentTimeMillis())).performClick()
+            compose.onNodeWithText(com.nameemrooz.journal.util.JalaliDate.time(timestamp)).performClick()
             assertUsableEditorAboveKeyboard(activity, "ذخیره تغییرات")
         }
     }

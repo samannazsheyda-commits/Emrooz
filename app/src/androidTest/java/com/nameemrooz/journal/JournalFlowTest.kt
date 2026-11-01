@@ -73,10 +73,10 @@ class JournalFlowTest {
             waitForHome()
             compose.onNodeWithText("نوشتن با صفحه‌کلید").performClick()
             compose.onNode(hasSetTextAction()).performTextInput("نوشتهٔ قابل پاک کردن")
-            compose.onNodeWithText("پاک کردن").performClick()
+            compose.onNode(hasText("پاک کردن") or hasContentDescription("پاک کردن")).performClick()
             compose.onNodeWithText("انصراف").performClick()
             compose.onNode(hasSetTextAction()).assertTextEquals("نوشتهٔ قابل پاک کردن")
-            compose.onNodeWithText("پاک کردن").performClick()
+            compose.onNode(hasText("پاک کردن") or hasContentDescription("پاک کردن")).performClick()
             compose.onNode(hasText("پاک کردن") and hasAnyAncestor(isDialog())).assertExists().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("نوشتن با صفحه‌کلید").fetchSemanticsNodes().isNotEmpty() }
             org.junit.Assert.assertEquals("", context.getSharedPreferences("emrooz_draft", Context.MODE_PRIVATE).getString("text", null))
@@ -116,10 +116,11 @@ class JournalFlowTest {
             compose.onNodeWithText("نوشتن با صفحه‌کلید").performClick()
             compose.onNode(hasSetTextAction()).performTextInput("نوشتهٔ قبلی ضبط")
             // Clear remains independent of the availability of any speech service.
-            compose.onNodeWithText("پاک کردن").performClick()
+            compose.onNode(hasText("پاک کردن") or hasContentDescription("پاک کردن")).performClick()
             compose.onNodeWithText("انصراف").performClick()
             compose.onNode(hasSetTextAction()).assertTextEquals("نوشتهٔ قبلی ضبط")
             org.junit.Assert.assertEquals(savedText, runBlocking { db.journalDao().byId(id)?.text })
+            compose.onNodeWithText("پایان ویرایش").performClick()
             compose.onNodeWithText("ضبط دوباره").assertExists()
         }
     }

@@ -17,8 +17,8 @@ android {
         applicationId = "com.nameemrooz.journal"
         minSdk = 26
         targetSdk = 35
-        versionCode = 41
-        versionName = "2.3.1"
+        versionCode = 42
+        versionName = "2.3.2"
         manifestPlaceholders["applicationLabel"] = "امروز"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         if (providers.gradleProperty("emroozPreview").isPresent) {
