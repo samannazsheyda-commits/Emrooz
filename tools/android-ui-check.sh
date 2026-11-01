@@ -2,7 +2,7 @@
 set -uo pipefail
 mkdir -p out
 timeout 15s adb logcat -c
-# Install and launch the actual release variant before the debug instrumentation suite.
+# Install and launch the actual release variant before the release instrumentation suite.
 printf '%s\n' 'Installing the release APK'
 timeout 120s adb install -r app/build/outputs/apk/release/app-release.apk || exit $?
 printf '%s\n' 'Launching the release activity'
@@ -19,6 +19,6 @@ if [ "$result" -ne 0 ]; then
     timeout 15s adb shell dumpsys meminfo >out/android-memory.txt
 fi
 if [ "$result" -ne 0 ]; then
-    rg -n -A45 -B5 'FATAL EXCEPTION|AndroidRuntime|NoClassDefFound|Exception|Error' out/android-logcat.txt | tail -250
+    grep -n -E -A45 -B5 'FATAL EXCEPTION|AndroidRuntime|NoClassDefFound|Exception|Error' out/android-logcat.txt | tail -250
 fi
 exit "$result"
