@@ -43,7 +43,18 @@ class StoreAssetsTest {
     private fun capture(theme: String, name: String) {
         compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        val bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        val expected = if (theme == "light") android.graphics.Color.rgb(247, 242, 234) else android.graphics.Color.rgb(13, 23, 38)
+        var captured: Bitmap? = null
+        // FLAG_SECURE updates reach SurfaceFlinger on the next real display frame,
+        // independently of Compose's test clock. Wait for an actual unprotected app frame.
+        repeat(40) {
+            if (captured == null) {
+                val candidate = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+                if (candidate != null && candidate.getPixel(20, 200) == expected) captured = candidate
+                else { candidate?.recycle(); android.os.SystemClock.sleep(100) }
+            }
+        }
+        val bitmap = checkNotNull(captured) { "Emulator did not expose the requested non-secure sample-data frame" }
         val file = File(context.getExternalFilesDir("store-shots"), "$theme/$name.png")
         file.parentFile?.mkdirs()
         file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
@@ -69,7 +80,10 @@ class StoreAssetsTest {
             ActivityScenario.launch(MainActivity::class.java).use { activity ->
                 home()
                 // Only this emulator test window permits the user-requested store screenshots.
-                activity.onActivity { it.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+                activity.onActivity {
+                    it.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    it.window.decorView.invalidate()
+                }
                 capture(folder, "01-home")
                 compose.onNodeWithText("ویرایش").performClick()
                 compose.onNode(hasSetTextAction()).performClick()
