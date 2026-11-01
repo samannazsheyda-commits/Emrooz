@@ -3,6 +3,8 @@ on:
   push:
     branches: ['work/emrooz-complete-*']
     paths: ['.github/workflows/emrooz-read-diagnostics.yml']
+  pull_request:
+    paths: ['.github/workflows/emrooz-read-diagnostics.yml']
 permissions:
   contents: read
   actions: read
@@ -26,9 +28,9 @@ jobs:
           print('LOGCAT_EXISTS',p.exists())
           if p.exists():
               lines=p.read_text(errors='replace').splitlines()
-              pattern=re.compile(r'FATAL EXCEPTION|AndroidRuntime|INSTRUMENTATION|AndroidJUnit|TestRunner|NoSuchMethod|NoClassDef|ClassNotFound|SecurityException|Permission Denial|Instrumentation|has died|Process crashed|am_crash|Unable to instantiate|am_anr',re.I)
+              pattern=re.compile(r'FATAL EXCEPTION|AndroidRuntime|INSTRUMENTATION|AndroidJUnit|TestRunner|TestExecutor|NoSuchMethod|NoClassDef|ClassNotFound|SecurityException|Permission Denial|Permission denied|Instrumentation|has died|Process crashed|am_crash|Unable to instantiate|am_anr|grpc|Socket|com.nameemrooz.journal',re.I)
               selected=[x for x in lines if pattern.search(x)]
-              print('\n'.join(selected[-350:]))
+              print('\n'.join(selected[:100]+selected[-400:]))
           for name in ['release-launch.txt','release-process.txt','android-activities.txt','android-memory.txt']:
               p=Path('diag/out')/name
               print('FILE',name,p.exists())
