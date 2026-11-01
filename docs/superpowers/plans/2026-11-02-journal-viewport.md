@@ -20,17 +20,17 @@
 - Archive/restore must retain note text and timestamps.
 
 ## Task 1: Viewport and navigation regression coverage
-- [ ] Add emulator tests for live transcript reaching its tail after speech callbacks, useful editor height and reachable save under a real IME, fixed archive access with many notes, separated preview/date metadata, detail save under IME.
-- [ ] Run the tests against the old product and record the relevant failures.
+- [x] Add emulator tests for live transcript reaching its tail after speech callbacks, useful editor height and reachable save under a real IME, fixed archive access with many notes, separated preview/date metadata, detail save under IME.
+- [x] Run the tests against the old product and record the relevant failures.
 
 ## Task 2: Correct viewport and archive layout
-- [ ] Add retained, layout-aware live-text scrolling without moving manual editor selection.
-- [ ] Add adjustResize and compact editor layout; keyboard dismissal and save remain accessible.
-- [ ] Move archive access to Home header; fixed active/archive tabs; readable note preview cards.
-- [ ] Run all unit tests, lint, build and Android flows on API 26 and 35; inspect real screenshots in both themes.
+- [x] Add retained, layout-aware live-text scrolling without moving manual editor selection.
+- [x] Add adjustResize and compact editor layout; keyboard dismissal and save remain accessible.
+- [x] Move archive access to Home header; fixed active/archive tabs; readable note preview cards.
+- [x] Run all unit tests, lint, build and Android flows on API 26 and 35; inspect real screenshots in both themes.
 
 ## Task 3: Release and store assets
-- [ ] Bump patch version, sign with the existing private key locally, verify cert, name, alignment and package.
-- [ ] Export original icons at 48/72/96 and 128/256/512; capture actual UI in both themes with synthetic content.
-- [ ] Inspect and save APKs and asset ZIP as persistent download files.
-- [ ] Obtain focused code review, address material findings, and report actual verification limitations.
+- [x] Bump patch version, sign with the existing private key locally, verify cert, name, alignment and package.
+- [x] Export original icons at 48/72/96 and 128/256/512; capture actual UI in both themes with synthetic content.
+- [x] Inspect and save APKs and asset ZIP as persistent download files.
+- [x] Obtain focused code review, address material findings, and report actual verification limitations.
