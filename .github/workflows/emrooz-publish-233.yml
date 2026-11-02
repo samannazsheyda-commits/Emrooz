@@ -1,0 +1,36 @@
+name: Publish verified Emrooz 2.3.3 APKs
+on:
+  push:
+    branches: ['work/emrooz-publish-233']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: emrooz-publish-233
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Emrooz-2.3.3-release-candidates
+          run-id: 41460096529
+          github-token: ${{ github.token }}
+          path: verified-ci
+      - name: Restore exact verified signed APK bytes
+        run: |
+          python3 tools/apply-release-overlay.py verified-ci/Emrooz-2.3.3-Update-CI-arm64.apk .github/releases/v2.3.3/Update.overlay.json.gz out/Emrooz-2.3.3-Update-arm64.apk
+          python3 tools/apply-release-overlay.py verified-ci/Emrooz-2.3.3-CafeBazaar-unsigned-arm64.apk .github/releases/v2.3.3/CafeBazaar.overlay.json.gz out/Emrooz-2.3.3-CafeBazaar-arm64.apk
+          cp .github/releases/v2.3.3/Verification.md out/Emrooz-2.3.3-Verification.md
+          cd out
+          sha256sum *.apk > SHA256SUMS.txt
+      - name: Publish download assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v2.3.3 --draft --target f9438aa25c173f5deba4d2835d18123c9fc04ddb --title 'امروز ۲.۳.۳' --notes-file .github/releases/v2.3.3/notes.md
+          gh release upload v2.3.3 out/Emrooz-2.3.3-Update-arm64.apk out/Emrooz-2.3.3-CafeBazaar-arm64.apk out/Emrooz-2.3.3-Verification.md out/SHA256SUMS.txt
+          gh release edit v2.3.3 --draft=false --latest
