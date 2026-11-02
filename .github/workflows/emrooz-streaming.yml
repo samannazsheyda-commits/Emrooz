@@ -46,28 +46,6 @@ jobs:
                   if n.startswith('assets/models/punctuation47/') and not n.endswith('/'):
                       p=Path('app/src/main')/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(n))
           PY
-      - name: Full unit suite, lint and optimized arm64 APKs
-        if: matrix.api == 35
-        run: |
-          python3 -m unittest discover -s tools/tests -v
-          gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
-          mkdir -p out
-          cp -r app/build/reports/tests out/jvm-tests
-          cp app/build/reports/lint-results-release.* out/
-          cp app/build/outputs/apk/release/app-release-unsigned.apk out/Emrooz-2.3.3-CafeBazaar-unsigned-arm64.apk
-          python3 tools/verify-apk.py out/Emrooz-2.3.3-CafeBazaar-unsigned-arm64.apk
-          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -P 16 -c 4 out/Emrooz-2.3.3-CafeBazaar-unsigned-arm64.apk
-          gradle --no-daemon -PemroozPreview -PemroozPreviewApplicationId=com.nameemrooz.journal.preview.hotfix :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk out/Emrooz-2.3.3-Update-CI-arm64.apk
-          python3 tools/verify-apk.py out/Emrooz-2.3.3-Update-CI-arm64.apk
-      - name: Preserve verified release builds before emulator tests
-        if: matrix.api == 35
-        uses: actions/upload-artifact@v4
-        with:
-          name: Emrooz-2.3.3-release-candidates
-          path: out/
-          retention-days: 30
-          compression-level: 0
       - name: Compile streaming instrumentation
         run: gradle --no-daemon -PemroozPreview -PemroozAbi=x86_64 :app:clean :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Enable KVM
@@ -83,13 +61,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 3072
-          script: |
-            adb shell settings put secure show_ime_with_hard_keyboard 1
-            mkdir -p out
-            result=0
-            timeout 600s gradle --no-daemon -Dorg.gradle.jvmargs='-Xmx1536m -Dfile.encoding=UTF-8' -PemroozPreview -PemroozAbi=x86_64 -Pandroid.testInstrumentationRunnerArguments.notClass=com.nameemrooz.journal.StoreAssetsTest :app:connectedDebugAndroidTest || result=$?
-            timeout 15s adb logcat -d >out/android-logcat.txt || true
-            exit "$result"
+          script: bash tools/check-streaming-android.sh
       - name: Retain Android diagnostics
         if: always()
         run: |
@@ -108,5 +80,58 @@ jobs:
             app/build/test-results/
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
+          retention-days: 30
+          compression-level: 0
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-read-only: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: Emrooz-2.3.1-api-35-preview-and-verification
+          run-id: 41304834289
+          github-token: ${{ github.token }}
+          path: prior-build
+      - name: Extract verified punctuation assets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          with zipfile.ZipFile(next(Path('prior-build').rglob('*.apk'))) as z:
+              for n in z.namelist():
+                  if n.startswith('assets/models/punctuation47/') and not n.endswith('/'):
+                      p=Path('app/src/main')/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(n))
+          PY
+      - name: Full unit suite, lint and optimized arm64 APKs
+        run: |
+          python3 -m unittest discover -s tools/tests -v
+          gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+          mkdir -p out
+          cp -r app/build/reports/tests out/jvm-tests
+          cp app/build/reports/lint-results-release.* out/
+          cp app/build/outputs/apk/release/app-release-unsigned.apk out/Emrooz-2.3.3-CafeBazaar-unsigned-arm64.apk
+          python3 tools/verify-apk.py out/Emrooz-2.3.3-CafeBazaar-unsigned-arm64.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -P 16 -c 4 out/Emrooz-2.3.3-CafeBazaar-unsigned-arm64.apk
+          gradle --no-daemon -PemroozPreview -PemroozPreviewApplicationId=com.nameemrooz.journal.preview.hotfix :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk out/Emrooz-2.3.3-Update-CI-arm64.apk
+          python3 tools/verify-apk.py out/Emrooz-2.3.3-Update-CI-arm64.apk
+      - name: Preserve verified release builds before emulator tests
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-2.3.3-release-candidates
+          path: out/
           retention-days: 30
           compression-level: 0
