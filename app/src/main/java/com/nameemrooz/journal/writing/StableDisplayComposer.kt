@@ -1,12 +1,19 @@
 package com.nameemrooz.journal.writing
 
 object StableDisplayComposer {
+    private val whitespace = Regex("\\s+")
+    private val whitespaceNoise = Regex("[\\t\\n\\r\\x0B\\f]| {2,}")
+    private val edgePunctuation = Regex("^[،,.!؟?:؛;]+|[،,.!؟?:؛;]+$")
     fun compose(stableRaw: String, stableDisplay: String, currentRaw: String): String {
         val raw = normalize(currentRaw)
         val baseRaw = normalize(stableRaw)
         val baseDisplay = normalize(stableDisplay)
         if (baseRaw.isBlank() || baseDisplay.isBlank()) return raw
 
+        if (raw == baseRaw) return baseDisplay
+        if (raw.startsWith(baseRaw) && raw.getOrNull(baseRaw.length) == ' ') {
+            return "$baseDisplay ${raw.substring(baseRaw.length + 1)}"
+        }
         val baseWords = baseRaw.split(' ')
         val currentWords = raw.split(' ')
         if (currentWords.size < baseWords.size) return raw
@@ -21,7 +28,10 @@ object StableDisplayComposer {
         .replace('ي', 'ی')
         .replace('ى', 'ی')
         .replace('ك', 'ک')
-        .replace(Regex("^[،,.!؟?:؛;]+|[،,.!؟?:؛;]+$"), "")
+        .replace(edgePunctuation, "")
 
-    private fun normalize(value: String): String = value.replace(Regex("\\s+"), " ").trim()
+    private fun normalize(value: String): String {
+        val trimmed = value.trim()
+        return if (whitespaceNoise.containsMatchIn(trimmed)) trimmed.replace(whitespace, " ") else trimmed
+    }
 }

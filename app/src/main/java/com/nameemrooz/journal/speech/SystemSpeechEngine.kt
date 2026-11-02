@@ -31,7 +31,7 @@ class SystemSpeechEngine(
 ) : SpeechEngine {
     private val appContext = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
-    private val policy = SystemSpeechErrorPolicy(maxRecoverableRetries = 1)
+    private val policy = SystemSpeechErrorPolicy(maxRecoverableRetries = 2)
     private val transcript = StableTranscriptMerger()
     private val closed = AtomicBoolean(false)
     private var recognizer: SpeechRecognizer? = null
@@ -41,6 +41,11 @@ class SystemSpeechEngine(
     private var stopping = false
     private var awaitingResult = false
     private var generation = 0L
+    private var cycle = 0L
+    private var cycleRunning = false
+    private var retryDelayMs = 350L
+    private var lastPublished = ""
+    private var lastStablePublished = ""
     private var preparation = 0L
     private var watchdog: Runnable? = null
 
@@ -62,7 +67,7 @@ class SystemSpeechEngine(
                 }
                 recognizer = SpeechRecognizer.createSpeechRecognizer(appContext)
             }
-            recognizer?.setRecognitionListener(listener(generation))
+            recognizer?.setRecognitionListener(listener(generation, cycle))
             if (onDeviceOnly && Build.VERSION.SDK_INT >= 33) {
                 recognizer?.checkRecognitionSupport(recognizerIntent(), ContextCompat.getMainExecutor(appContext), object : RecognitionSupportCallback {
                     override fun onSupportResult(support: RecognitionSupport) {
@@ -118,21 +123,14 @@ class SystemSpeechEngine(
             onError("برای نوشتن با صدا اجازه‌ی میکروفون لازم است")
             return@post
         }
-        // A fresh binder/listener for each user recording prevents late callbacks
-        // from a canceled recording being delivered into the next one.
-        try {
-            recognizer?.destroy()
-            recognizer = if (onDeviceOnly) {
-                if (Build.VERSION.SDK_INT < 31) throw UnsupportedOperationException("On-device recognition requires Android 12")
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
-            } else SpeechRecognizer.createSpeechRecognizer(appContext)
-        } catch (_: Exception) { unavailable("سرویس گفتار گوشی آماده نشد"); return@post }
         val ticket = ++generation
         transcript.reset()
         policy.reset()
+        retryDelayMs = 350L
+        lastPublished = ""
+        lastStablePublished = ""
         stopping = false
         active = true
-        recognizer?.setRecognitionListener(listener(ticket))
         onListening(true)
         startCycle(ticket)
     } }
@@ -140,6 +138,7 @@ class SystemSpeechEngine(
     override fun stop() { main.post {
         if (closed.get() || !active || stopping) return@post
         stopping = true
+        if (!cycleRunning) { finish(true); return@post }
         val ticket = generation
         runCatching { recognizer?.stopListening() }
         // A misbehaving service must never leave the UI waiting indefinitely.
@@ -148,23 +147,70 @@ class SystemSpeechEngine(
 
     private fun valid(ticket: Long) = !closed.get() && active && ticket == generation
 
+    private fun currentCycle(ticket: Long, run: Long) = valid(ticket) && run == cycle
+
     private fun startCycle(ticket: Long) {
         if (!valid(ticket) || stopping) return
         awaitingResult = false
+        val run = ++cycle
+        cycleRunning = true
         try {
+            // Each native utterance gets its own callback binder. Retired binders cannot
+            // accidentally deliver a late error through the next cycle's listener.
+            recognizer?.destroy()
+            recognizer = if (onDeviceOnly) {
+                if (Build.VERSION.SDK_INT < 31) throw UnsupportedOperationException("On-device recognition requires Android12")
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
+            } else SpeechRecognizer.createSpeechRecognizer(appContext)
+            recognizer?.setRecognitionListener(listener(ticket, run))
             recognizer?.startListening(recognizerIntent()) ?: error("Recognizer unavailable")
-            armWatchdog(ticket, 12_000L)
-        } catch (_: Exception) { fail("سرویس گفتار گوشی آماده نشد") }
+            armWatchdog(ticket, run, 12_000L)
+        } catch (_: Exception) {
+            recover(ticket, SystemSpeechFailure.CLIENT, "سرویس گفتار گوشی آماده نشد")
+        }
     }
 
     private fun cancelWatchdog() { watchdog?.let(main::removeCallbacks); watchdog = null }
-    private fun armWatchdog(ticket: Long, delay: Long) {
+    private fun armWatchdog(ticket: Long, run: Long, delay: Long) {
         cancelWatchdog()
-        watchdog = Runnable { if (valid(ticket)) fail("سرویس گفتار گوشی پاسخ نداد؛ دوباره تلاش کنید") }.also { main.postDelayed(it, delay) }
+        watchdog = Runnable {
+            if (currentCycle(ticket, run)) recover(ticket, SystemSpeechFailure.NETWORK_TIMEOUT, "سرویس گفتار گوشی پاسخ نداد؛ دوباره تلاش کنید")
+        }.also { main.postDelayed(it, delay) }
     }
-    private fun restart(ticket: Long, delay: Long = 250L) {
+    private fun restart(ticket: Long, delay: Long = 100L) {
         cancelWatchdog()
+        cycle++
+        cycleRunning = false
         main.postDelayed({ if (valid(ticket) && !stopping) startCycle(ticket) }, delay)
+    }
+
+    private fun publish(value: String, stable: Boolean) {
+        if (value.isBlank()) return
+        if (value != lastPublished) {
+            lastPublished = value
+            policy.onSuccess()
+            retryDelayMs = 350L
+            onText(value)
+        }
+        if (stable && value != lastStablePublished) {
+            lastStablePublished = value
+            onStableText(value)
+        }
+    }
+
+    private fun recover(ticket: Long, failure: SystemSpeechFailure, message: String) {
+        cancelWatchdog()
+        // Preserve the words already shown even when the provider sends no final result.
+        publish(transcript.commit(""), stable = true)
+        if (stopping) { finish(false); return }
+        when (policy.onFailure(failure)) {
+            SystemSpeechAction.RETRY -> {
+                val delay = retryDelayMs
+                retryDelayMs = (retryDelayMs * 2).coerceAtMost(2000L)
+                restart(ticket, delay)
+            }
+            SystemSpeechAction.STOP, SystemSpeechAction.FALLBACK -> fail(message)
+        }
     }
 
     private fun finish(deliverPartial: Boolean) {
@@ -172,10 +218,12 @@ class SystemSpeechEngine(
         val wasActive = active
         active = false
         stopping = false
+        cycleRunning = false
         generation++
+        cycle++
         runCatching { recognizer?.cancel() }
         if (wasActive) {
-            if (deliverPartial) transcript.current().takeIf { it.isNotBlank() }?.let(onStableText)
+            if (deliverPartial) publish(transcript.commit(""), stable = true)
             onListening(false)
         }
     }
@@ -188,53 +236,55 @@ class SystemSpeechEngine(
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
         // EXTRA_PREFER_OFFLINE is only a hint; privacy rests on the explicit factory.
         if (onDeviceOnly) putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-        if (Build.VERSION.SDK_INT >= 33) putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY)
+        if (Build.VERSION.SDK_INT >= 33) putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_LATENCY)
     }
     private fun text(results: Bundle?) = SystemSpeechResultPolicy.select(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty())
     private fun clean(raw: String) = if (languageTag.startsWith("fa", true)) PersianText.clean(raw, false) else raw.replace(Regex("\\s+"), " ").trim()
 
-    private fun listener(ticket: Long) = object : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) { if (valid(ticket)) armWatchdog(ticket, 45_000L) }
-        override fun onBeginningOfSpeech() { if (valid(ticket)) armWatchdog(ticket, 45_000L) }
+    private fun listener(ticket: Long, run: Long) = object : RecognitionListener {
+        override fun onReadyForSpeech(params: Bundle?) { if (currentCycle(ticket, run)) armWatchdog(ticket, run, 45_000L) }
+        override fun onBeginningOfSpeech() { if (currentCycle(ticket, run)) armWatchdog(ticket, run, 45_000L) }
         override fun onRmsChanged(rmsdB: Float) {
-            if (valid(ticket) && !stopping && !awaitingResult) armWatchdog(ticket, 45_000L)
+            if (currentCycle(ticket, run) && !stopping && !awaitingResult) armWatchdog(ticket, run, 45_000L)
         }
         override fun onBufferReceived(buffer: ByteArray?) = Unit
-        override fun onEndOfSpeech() { if (valid(ticket)) { awaitingResult = true; armWatchdog(ticket, 10_000L) } }
+        override fun onEndOfSpeech() {
+            if (currentCycle(ticket, run)) { awaitingResult = true; armWatchdog(ticket, run, 10_000L) }
+        }
         override fun onError(error: Int) {
-            if (!valid(ticket)) return
+            if (!currentCycle(ticket, run)) return
             cancelWatchdog()
             if (stopping) { finish(true); return }
             if (error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE) {
                 if (onDeviceOnly) unavailable("این زبان در گفتار آفلاین گوشی آماده نیست؛ سرویس گفتار گوشی را انتخاب کنید")
-                else fail("این زبان در سرویس گفتار گوشی آماده نیست")
+                else fail("این زبان در سرویس گفتار گوشی آماده نیست (کد $error)")
                 return
             }
-            when (policy.onFailure(mapFailure(error))) {
-                SystemSpeechAction.RETRY -> restart(ticket, 350L)
-                SystemSpeechAction.STOP -> fail("اجازه‌ی میکروفون برای تبدیل صدا لازم است")
-                SystemSpeechAction.FALLBACK -> fail(if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) "گفتاری دریافت نشد؛ دوباره تلاش کنید" else "سرویس گفتار گوشی پاسخ نداد؛ دوباره تلاش کنید")
-            }
+            recover(ticket, mapFailure(error), errorMessage(error) + " (کد $error)")
         }
         override fun onResults(results: Bundle?) {
-            if (!valid(ticket)) return
+            if (!currentCycle(ticket, run)) return
             cancelWatchdog()
             val value = clean(text(results))
-            if (value.isNotBlank()) {
-                val accepted = transcript.commit(value)
-                onText(accepted)
-                onStableText(accepted)
-                policy.onSuccess()
-            }
-            if (stopping) finish(true) else restart(ticket)
+            publish(transcript.commit(value), stable = true)
+            if (stopping) finish(false) else restart(ticket)
         }
         override fun onPartialResults(partialResults: Bundle?) {
-            if (!valid(ticket)) return
-            if (!stopping) armWatchdog(ticket, 45_000L)
+            if (!currentCycle(ticket, run)) return
+            if (!stopping) armWatchdog(ticket, run, if (awaitingResult) 10_000L else 45_000L)
             val value = clean(text(partialResults))
-            if (value.isNotBlank()) onText(transcript.updatePartial(value))
+            if (value.isNotBlank()) publish(transcript.updatePartial(value), stable = false)
         }
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
+    }
+
+    private fun errorMessage(error: Int) = when (error) {
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "اجازه‌ی میکروفون برای تبدیل صدا لازم است"
+        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "گفتاری دریافت نشد؛ دوباره تلاش کنید"
+        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "ارتباط سرویس گفتار برقرار نشد؛ متن شما حفظ شده است"
+        SpeechRecognizer.ERROR_AUDIO -> "دریافت صدا قطع شد؛ متن شما حفظ شده است"
+        SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> "درخواست‌های گفتار بیش از حد شد؛ کمی صبر کنید"
+        else -> "سرویس گفتار گوشی پاسخ نداد؛ دوباره تلاش کنید"
     }
 
     private fun mapFailure(error: Int) = when (error) {
@@ -242,7 +292,10 @@ class SystemSpeechEngine(
         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> SystemSpeechFailure.SPEECH_TIMEOUT
         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> SystemSpeechFailure.BUSY
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> SystemSpeechFailure.PERMISSION
-        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> SystemSpeechFailure.NETWORK
+        SpeechRecognizer.ERROR_NETWORK -> SystemSpeechFailure.NETWORK
+        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> SystemSpeechFailure.NETWORK_TIMEOUT
+        SpeechRecognizer.ERROR_SERVER, SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> SystemSpeechFailure.SERVER
+        SpeechRecognizer.ERROR_CLIENT -> SystemSpeechFailure.CLIENT
         else -> SystemSpeechFailure.OTHER
     }
 

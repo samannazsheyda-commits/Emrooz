@@ -404,7 +404,9 @@ private fun copyJournalText(context: Context, text: String, clearEnabled: Boolea
 
 private fun localizeSpeechError(message: String, language: AppLanguage): String {
     if (language == AppLanguage.FA) return message
-    return when (message) {
+    val code = Regex(" \\(کد (\\d+)\\)$").find(message)
+    val base = if (code == null) message else message.substring(0, code.range.first)
+    val translated = when (base) {
         "مدل فارسی آماده نشد" -> "Offline speech model is not ready"
         "چند لحظه صبر کن تا نوشتن آماده شود" -> "Please wait while speech recognition gets ready"
         "برای نوشتن با صدا اجازه‌ی میکروفون لازم است" -> "Microphone permission is required"
@@ -425,8 +427,12 @@ private fun localizeSpeechError(message: String, language: AppLanguage): String 
         "دقت بیشتر در دسترس نبود؛ آفلاین ادامه می‌دهم" -> "Higher-accuracy speech is unavailable; continuing offline"
         "اجازه‌ی میکروفون برای تبدیل صدا لازم است" -> "Microphone permission is required for speech recognition"
         "پردازش از ضبط عقب افتاد؛ ضبط متوقف شد و صدای دریافت‌شده در حال تبدیل است" -> "Recognition is catching up; recording stopped while captured speech is transcribed"
-        else -> message
+        "ارتباط سرویس گفتار برقرار نشد؛ متن شما حفظ شده است" -> "Device speech connection failed; your text was kept"
+        "دریافت صدا قطع شد؛ متن شما حفظ شده است" -> "Audio input stopped; your text was kept"
+        "درخواست‌های گفتار بیش از حد شد؛ کمی صبر کنید" -> "Too many speech requests; please wait a moment"
+        else -> base
     }
+    return translated + (code?.groupValues?.get(1)?.let { " (code $it)" } ?: "")
 }
 
 @Composable

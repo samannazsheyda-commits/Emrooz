@@ -1,6 +1,9 @@
 package com.nameemrooz.journal.speech
 
 object TranscriptContinuity {
+    private val whitespace = Regex("\\s+")
+    private val whitespaceNoise = Regex("[\\t\\n\\r\\x0B\\f]| {2,}")
+    private val trailingPunctuation = Regex("[،,.!؟?:؛;]+$")
     fun combine(prefix: String, incoming: String): String {
         val left = normalize(prefix)
         val right = normalize(incoming)
@@ -31,8 +34,10 @@ object TranscriptContinuity {
     }
 
     private fun comparable(word: String): String =
-        word.replace(Regex("[،,.!؟?:؛;]+$"), "")
+        word.replace(trailingPunctuation, "")
 
-    private fun normalize(value: String): String =
-        value.replace(Regex("\\s+"), " ").trim()
+    private fun normalize(value: String): String {
+        val trimmed = value.trim()
+        return if (whitespaceNoise.containsMatchIn(trimmed)) trimmed.replace(whitespace, " ") else trimmed
+    }
 }

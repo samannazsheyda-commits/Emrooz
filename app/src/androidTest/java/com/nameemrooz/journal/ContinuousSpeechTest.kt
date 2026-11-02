@@ -4,6 +4,15 @@ import android.content.*
 import android.os.*
 import android.speech.*
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.core.app.ActivityScenario
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.lifecycle.ViewModelProvider
+import com.nameemrooz.journal.data.SettingsStore
+import com.nameemrooz.journal.speech.SpeechMode
+import com.nameemrooz.journal.ui.AppViewModel
+import kotlinx.coroutines.runBlocking
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -19,6 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Actual SpeechRecognizer -> system manager -> separate-process test RecognitionService. No audio/network. */
 @RunWith(AndroidJUnit4::class)
 class ContinuousSpeechTest {
+    @get:Rule val compose = createEmptyComposeRule()
     @get:Rule val permission = GrantPermissionRule.grant(android.Manifest.permission.RECORD_AUDIO)
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
@@ -74,6 +84,51 @@ class ContinuousSpeechTest {
         for(word in listOf("بخش نخست","بخش دوم","بخش سوم","نتیجه نهایی"))assertTrue("Lost interrupted text: $last",last.contains(word))
         assertTrue(listening.get())
     }
+    @Test fun sustained_network_failure_stops_with_a_code_after_bounded_retries() {
+        val texts=CopyOnWriteArrayList<String>();val errors=CopyOnWriteArrayList<String>();val listening=AtomicBoolean()
+        start("network",texts,errors,listening)
+        waitFor { errors.isNotEmpty() }
+        assertFalse(listening.get())
+        assertEquals("Retries must stay bounded",3,command("","stats").getInt("cycles"))
+        assertTrue("Diagnostic must contain the actual provider error code",errors.single().contains("کد 2"))
+    }
+
+    @Test fun full_home_pipeline_keeps_long_live_text_scrollable_and_clear_rejects_late_edits() {
+        command("long")
+        runBlocking {
+            SettingsStore(context).apply {
+                setLock(false);setReminder(false)
+                setHighAccuracyDisclosureAccepted(true);setSpeechMode(SpeechMode.SYSTEM_HIGH_ACCURACY)
+                setEnhancedOnDeviceEditingEnabled(true)
+            }
+        }
+        context.getSharedPreferences("emrooz_draft",Context.MODE_PRIVATE).edit().clear().commit()
+        ActivityScenario.launch(MainActivity::class.java).use { activity ->
+            compose.waitUntil(30_000){compose.onAllNodesWithText("از امروزت بگو").fetchSemanticsNodes().isNotEmpty()}
+            var vm:AppViewModel?=null
+            activity.onActivity { vm=ViewModelProvider(it)[AppViewModel::class.java] }
+            compose.waitUntil(5_000){
+                runCatching { compose.onNodeWithContentDescription("شروع ضبط").assertIsEnabled();true }.getOrDefault(false)
+            }
+            compose.onNodeWithContentDescription("شروع ضبط").performClick()
+            compose.waitUntil(30_000){vm!!.draft.text.value.contains("۴۰")}
+            assertTrue(vm!!.draft.text.value.length>6000)
+            compose.onNodeWithContentDescription("توقف").performClick()
+            compose.waitUntil(5_000){compose.onAllNodesWithContentDescription("توقف").fetchSemanticsNodes().isEmpty()}
+            compose.waitForIdle()
+            val node=compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().first{it.config.contains(SemanticsProperties.VerticalScrollAxisRange)}
+            val range=node.config[SemanticsProperties.VerticalScrollAxisRange]
+            assertTrue(node.boundsInRoot.height>0)
+            assertTrue(range.maxValue()>0)
+            compose.waitUntil(5_000){kotlin.math.abs(range.value()-range.maxValue())<2f}
+            compose.onNodeWithText("پاک کردن").performClick()
+            compose.onNode(hasText("پاک کردن") and hasAnyAncestor(isDialog())).performClick()
+            compose.waitUntil(5_000){vm!!.draft.text.value.isEmpty()}
+            SystemClock.sleep(500)
+            assertEquals("Late optional edits must not restore a cleared recording","",vm!!.draft.text.value)
+        }
+    }
+
     @Test fun a_long_binder_callback_stream_keeps_delivering_text_and_stop_rejects_late_results() {
         val texts=CopyOnWriteArrayList<String>();val errors=CopyOnWriteArrayList<String>();val listening=AtomicBoolean()
         val engine=start("long",texts,errors,listening)

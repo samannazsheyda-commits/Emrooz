@@ -122,7 +122,8 @@ class HybridSpeechController(
             if (closed.get() || epoch != engineEpoch) return@text
             val combinedRaw = TranscriptContinuity.combine(carryPrefix, candidate)
             rawCurrent = combinedRaw
-            val normalized = editor.live(combinedRaw, languageTag)
+            // The device adapter already normalizes each utterance before accumulating it.
+            val normalized = combinedRaw
             normalizedCurrent = normalized
             onText(edits.partial(normalized))
         }
@@ -130,12 +131,13 @@ class HybridSpeechController(
             if (closed.get() || epoch != engineEpoch) return@stable
             val combinedRaw = TranscriptContinuity.combine(carryPrefix, candidate)
             rawCurrent = combinedRaw
-            val normalizedSnapshot = editor.live(combinedRaw, languageTag)
+            val normalizedSnapshot = combinedRaw
             normalizedCurrent = normalizedSnapshot
+            val displayedSnapshot = edits.partial(normalizedSnapshot)
             val ticket = edits.ticket(normalizedSnapshot)
             editingJob?.cancel()
             editingJob = scope.launch {
-                val edited = editingMutex.withLock { coordinator.stable(normalizedSnapshot, languageTag) }
+                val edited = editingMutex.withLock { coordinator.stable(displayedSnapshot, languageTag) }
                 mainHandler.post {
                     if (!closed.get() && epoch == engineEpoch) {
                         edits.apply(ticket, edited)?.let(onText)

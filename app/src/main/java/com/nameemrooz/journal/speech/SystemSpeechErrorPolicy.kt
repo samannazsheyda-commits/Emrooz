@@ -33,7 +33,11 @@ class SystemSpeechErrorPolicy(
         SystemSpeechFailure.PERMISSION -> SystemSpeechAction.STOP
         SystemSpeechFailure.NO_MATCH,
         SystemSpeechFailure.SPEECH_TIMEOUT,
-        SystemSpeechFailure.BUSY -> {
+        SystemSpeechFailure.BUSY,
+        SystemSpeechFailure.NETWORK,
+        SystemSpeechFailure.NETWORK_TIMEOUT,
+        SystemSpeechFailure.SERVER,
+        SystemSpeechFailure.CLIENT -> {
             if (recoverableRetries < maxRecoverableRetries) {
                 recoverableRetries += 1
                 SystemSpeechAction.RETRY
@@ -41,10 +45,6 @@ class SystemSpeechErrorPolicy(
                 SystemSpeechAction.FALLBACK
             }
         }
-        SystemSpeechFailure.NETWORK,
-        SystemSpeechFailure.NETWORK_TIMEOUT,
-        SystemSpeechFailure.SERVER,
-        SystemSpeechFailure.CLIENT,
         SystemSpeechFailure.LANGUAGE,
         SystemSpeechFailure.OTHER -> SystemSpeechAction.FALLBACK
     }

@@ -1,9 +1,13 @@
 package com.nameemrooz.journal.speech;
 
 import java.util.Arrays;
+import java.util.regex.Pattern;
 
 /** Keeps committed speech stable while allowing only the active utterance to change. */
 public final class StableTranscriptMerger {
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern NOISE = Pattern.compile("[\\t\\n\\r\\x0B\\f]| {2,}");
+    private static final Pattern TRAILING_PUNCTUATION = Pattern.compile("[،,.!؟?:؛;]+$");
     private String committed = "";
     private String partial = "";
 
@@ -14,6 +18,7 @@ public final class StableTranscriptMerger {
 
     public synchronized String commit(String finalUtterance) {
         String incoming = normalize(finalUtterance);
+        if (incoming.isEmpty()) incoming = partial;
         if (!incoming.isEmpty()) committed = mergeWithOverlap(committed, incoming);
         partial = "";
         return committed;
@@ -39,7 +44,13 @@ public final class StableTranscriptMerger {
         if (left.isEmpty()) return right;
         if (right.isEmpty()) return left;
 
-        String[] leftWords = left.split(" ");
+        int tailStart = left.length();
+        for (int count=0; count<12; count++) {
+            int boundary = left.lastIndexOf(' ', tailStart - 1);
+            if (boundary < 0) { tailStart=0; break; }
+            tailStart=boundary;
+        }
+        String[] leftWords = left.substring(tailStart == 0 ? 0 : tailStart+1).split(" ");
         String[] rightWords = right.split(" ");
         int max = Math.min(Math.min(leftWords.length, rightWords.length), 12);
         int overlap = 0;
@@ -57,10 +68,12 @@ public final class StableTranscriptMerger {
     }
 
     private static String comparable(String word) {
-        return word.replaceAll("[،,.!؟?:؛;]+$", "");
+        return TRAILING_PUNCTUATION.matcher(word).replaceAll("");
     }
 
     private static String normalize(String text) {
-        return text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        if (text == null) return "";
+        String trimmed = text.trim();
+        return NOISE.matcher(trimmed).find() ? WHITESPACE.matcher(trimmed).replaceAll(" ") : trimmed;
     }
 }

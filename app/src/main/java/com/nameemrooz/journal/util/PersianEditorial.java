@@ -18,6 +18,7 @@ public final class PersianEditorial {
     );
 
     private static final Map<String, String> PHRASE_FIXES = new LinkedHashMap<>();
+    private static final Map<Pattern, String> PHRASE_PATTERNS = new LinkedHashMap<>();
     static {
         PHRASE_FIXES.put("نمی خواستم", "نمی‌خواستم"); PHRASE_FIXES.put("نمیخواستم", "نمی‌خواستم");
         PHRASE_FIXES.put("می خواستم", "می‌خواستم"); PHRASE_FIXES.put("میخواستم", "می‌خواستم");
@@ -31,6 +32,9 @@ public final class PersianEditorial {
         PHRASE_FIXES.put("نمی کنم", "نمی‌کنم"); PHRASE_FIXES.put("نمیکنم", "نمی‌کنم");
         PHRASE_FIXES.put("می کنم", "می‌کنم"); PHRASE_FIXES.put("میکنم", "می‌کنم");
         PHRASE_FIXES.put("می رم", "می‌رم"); PHRASE_FIXES.put("میرم", "می‌رم");
+        for (Map.Entry<String,String> fix : PHRASE_FIXES.entrySet()) {
+            PHRASE_PATTERNS.put(Pattern.compile("(?<![\\p{L}\\p{N}\\u200c])" + Pattern.quote(fix.getKey()) + "(?![\\p{L}\\p{N}\\u200c])"), Matcher.quoteReplacement(fix.getValue()));
+        }
     }
 
     private static final Pattern PROTECTED_TOKEN = Pattern.compile(
@@ -38,13 +42,19 @@ public final class PersianEditorial {
     );
     private static final char MARKER_START = '\uE100';
     private static final char MARKER_END = '\uE101';
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern LINE_BREAKS = Pattern.compile("[\\t\\n\\r]+");
+    private static final Pattern SPACE_BEFORE_PUNCT = Pattern.compile("\\s+([،؛:؟!.])");
+    private static final Pattern SPACE_AFTER_PUNCT = Pattern.compile("([،؛:؟!.])(?=\\S)");
+    private static final Pattern EDGE_PUNCT = Pattern.compile("^[،,.!؟?:؛;]+|[،,.!؟?:؛;]+$");
+    private static final Pattern MARKER = Pattern.compile("\uE100([0-9A-Z]+)\uE101");
 
     public static String clean(String input, boolean isFinal) {
         if (input == null || input.isBlank()) return "";
         Protected protectedText = protect(input);
         String text = normalizeLetters(protectedText.text);
-        for (Map.Entry<String, String> fix : PHRASE_FIXES.entrySet()) {
-            text = text.replaceAll("(?<![\\p{L}\\p{N}\\u200c])" + Pattern.quote(fix.getKey()) + "(?![\\p{L}\\p{N}\\u200c])", Matcher.quoteReplacement(fix.getValue()));
+        for (Map.Entry<Pattern, String> fix : PHRASE_PATTERNS.entrySet()) {
+            text = fix.getKey().matcher(text).replaceAll(fix.getValue());
         }
         text = normalizePunctuation(text);
         text = removeFillersAndAccidentalRepeats(text);
@@ -67,16 +77,16 @@ public final class PersianEditorial {
     }
 
     private static String normalizeLetters(String value) {
-        return value.replace('ي', 'ی').replace('ى', 'ی').replace('ك', 'ک')
-                .replace('ة', 'ه').replace('ۀ', 'ه').replace('\u200e', ' ').replace('\u200f', ' ')
-                .replaceAll("[\\t\\n\\r]+", " ").replaceAll("\\s+", " ").trim();
+        String letters = value.replace('ي', 'ی').replace('ى', 'ی').replace('ك', 'ک')
+                .replace('ة', 'ه').replace('ۀ', 'ه').replace('\u200e', ' ').replace('\u200f', ' ');
+        return WHITESPACE.matcher(LINE_BREAKS.matcher(letters).replaceAll(" ")).replaceAll(" ").trim();
     }
 
     private static String normalizePunctuation(String value) {
-        return value.replace(',', '،').replace('?', '؟').replace(';', '؛')
-                .replaceAll("\\s+([،؛:؟!.])", "$1")
-                .replaceAll("([،؛:؟!.])(?=\\S)", "$1 ")
-                .replaceAll("\\s+", " ").trim();
+        String marks = value.replace(',', '،').replace('?', '؟').replace(';', '؛');
+        marks = SPACE_BEFORE_PUNCT.matcher(marks).replaceAll("$1");
+        marks = SPACE_AFTER_PUNCT.matcher(marks).replaceAll("$1 ");
+        return WHITESPACE.matcher(marks).replaceAll(" ").trim();
     }
 
     private static String removeFillersAndAccidentalRepeats(String value) {
@@ -85,7 +95,6 @@ public final class PersianEditorial {
             if (word.isBlank()) continue;
             String bare = stripPunctuation(word);
             if (bare.isEmpty() || FILLERS.contains(bare)) continue;
-            String previous = result.isEmpty() ? "" : stripPunctuation(result.get(result.size() - 1));
             // Keep emphasis. ASR overlap deduplication belongs to StableTranscriptMerger.
             result.add(word);
         }
@@ -93,7 +102,7 @@ public final class PersianEditorial {
     }
 
     private static String stripPunctuation(String value) {
-        return value.replaceAll("^[،,.!؟?:؛;]+|[،,.!؟?:؛;]+$", "");
+        return EDGE_PUNCT.matcher(value).replaceAll("");
     }
 
     private static Protected protect(String source) {
@@ -111,12 +120,18 @@ public final class PersianEditorial {
     }
 
     private static String restore(String source, List<String> tokens) {
-        String result = source;
-        for (int index = 0; index < tokens.size(); index++) {
-            String marker = "" + MARKER_START + Integer.toString(index, 36).toUpperCase(Locale.ROOT) + MARKER_END;
-            result = result.replace(marker, tokens.get(index));
+        Matcher matcher = MARKER.matcher(source);
+        StringBuffer out = new StringBuffer(source.length());
+        while (matcher.find()) {
+            String replacement = matcher.group();
+            try {
+                int index = Integer.parseInt(matcher.group(1),36);
+                if (index >= 0 && index < tokens.size()) replacement = tokens.get(index);
+            } catch (NumberFormatException ignored) { /* Preserve user-supplied private-use text. */ }
+            matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
         }
-        return result;
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     private record Protected(String text, List<String> tokens) {}

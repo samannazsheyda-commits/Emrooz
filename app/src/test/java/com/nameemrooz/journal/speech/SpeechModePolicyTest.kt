@@ -36,8 +36,9 @@ class SpeechModePolicyTest {
         assertEquals(SystemSpeechAction.FALLBACK, policy.onFailure(SystemSpeechFailure.NO_MATCH))
     }
 
-    @Test fun networkFailureFallsBackAndPermissionStops() {
+    @Test fun networkFailureRetriesWithinBudgetAndPermissionStops() {
         val policy = SystemSpeechErrorPolicy(maxRecoverableRetries = 1)
+        assertEquals(SystemSpeechAction.RETRY, policy.onFailure(SystemSpeechFailure.NETWORK))
         assertEquals(SystemSpeechAction.FALLBACK, policy.onFailure(SystemSpeechFailure.NETWORK))
         policy.reset()
         assertEquals(SystemSpeechAction.STOP, policy.onFailure(SystemSpeechFailure.PERMISSION))

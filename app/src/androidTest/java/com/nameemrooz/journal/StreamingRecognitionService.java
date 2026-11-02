@@ -25,9 +25,10 @@ public final class StreamingRecognitionService extends RecognitionService {
         } else value="امروز با میثم قدم زدم";
         final String text=value;
         try { callback.readyForSpeech(new Bundle());callback.beginningOfSpeech(); } catch(Exception ignored) {}
-        main.postDelayed(()->{try {callback.partialResults(results(text));}catch(Exception ignored){}},25);
+        if(!"network".equals(StreamingScript.mode)) main.postDelayed(()->{try {callback.partialResults(results(text));}catch(Exception ignored){}},25);
         main.postDelayed(()->{try {
-            if("interrupted".equals(StreamingScript.mode)&&cycle<=3)callback.error(SpeechRecognizer.ERROR_NO_MATCH);
+            if("network".equals(StreamingScript.mode))callback.error(SpeechRecognizer.ERROR_NETWORK);
+            else if("interrupted".equals(StreamingScript.mode)&&cycle<=3)callback.error(SpeechRecognizer.ERROR_NO_MATCH);
             else callback.results(results(text));
         }catch(Exception ignored){}},75);
     }
