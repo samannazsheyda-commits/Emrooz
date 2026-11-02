@@ -3,5 +3,6 @@ package com.nameemrooz.journal;
 final class StreamingScript {
     static String mode="normal";
     static int cycle=0;
+    static int cancellations=0;
     static String format="";
 }

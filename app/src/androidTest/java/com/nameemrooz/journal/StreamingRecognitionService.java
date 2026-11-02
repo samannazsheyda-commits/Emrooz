@@ -14,6 +14,7 @@ public final class StreamingRecognitionService extends RecognitionService {
     @Override protected void onStartListening(Intent intent, Callback callback) {
         StreamingScript.format=intent.getStringExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING);
         int cycle=++StreamingScript.cycle;
+        if ("stall".equals(StreamingScript.mode) && cycle==1) return;
         String value;
         if ("interrupted".equals(StreamingScript.mode)) {
             String[] parts={"بخش نخست","بخش دوم","بخش سوم","نتیجه نهایی"};
@@ -35,7 +36,7 @@ public final class StreamingRecognitionService extends RecognitionService {
     @Override protected void onStopListening(Callback callback) {
         main.postDelayed(()->{try{callback.error(SpeechRecognizer.ERROR_CLIENT);}catch(Exception ignored){}},30);
     }
-    @Override protected void onCancel(Callback callback) {}
+    @Override protected void onCancel(Callback callback) { StreamingScript.cancellations++; }
     private static Bundle results(String text){Bundle out=new Bundle();out.putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION,new ArrayList<>(Collections.singletonList(text)));return out;}
     private static String persianNumber(int value){StringBuilder out=new StringBuilder();for(char c:Integer.toString(value).toCharArray())out.append(c>='0'&&c<='9'?(char)('۰'+(c-'0')):c);return out.toString();}
 }

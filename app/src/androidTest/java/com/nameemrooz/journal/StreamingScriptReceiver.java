@@ -8,9 +8,11 @@ public final class StreamingScriptReceiver extends BroadcastReceiver {
         if ("configure".equals(intent.getStringExtra("action"))) {
             StreamingScript.mode=intent.getStringExtra("mode");
             StreamingScript.cycle=0;
+            StreamingScript.cancellations=0;
             StreamingScript.format="";
         }
         Bundle result=new Bundle();result.putString("format",StreamingScript.format);result.putInt("cycles",StreamingScript.cycle);
+        result.putInt("cancellations",StreamingScript.cancellations);
         setResultExtras(result);
     }
 }

@@ -97,6 +97,16 @@ class ContinuousSpeechTest {
         for(word in listOf("بخش نخست","بخش دوم","بخش سوم","نتیجه نهایی"))assertTrue("Lost interrupted text: $last",last.contains(word))
         assertTrue(listening.get())
     }
+    @Test fun watchdog_cancels_an_unfinished_request_before_retrying_on_the_same_binding() {
+        val texts=CopyOnWriteArrayList<String>();val errors=CopyOnWriteArrayList<String>();val listening=AtomicBoolean()
+        start("stall",texts,errors,listening)
+        waitFor(20_000) { texts.isNotEmpty() || errors.isNotEmpty() }
+        assertTrue("A stalled request must be retried: $errors",errors.isEmpty())
+        assertTrue(texts.isNotEmpty())
+        assertTrue("Timeout must cancel the outstanding request",command("","stats").getInt("cancellations")>=1)
+        assertTrue(listening.get())
+    }
+
     @Test fun sustained_network_failure_stops_with_a_code_after_bounded_retries() {
         val texts=CopyOnWriteArrayList<String>();val errors=CopyOnWriteArrayList<String>();val listening=AtomicBoolean()
         start("network",texts,errors,listening)

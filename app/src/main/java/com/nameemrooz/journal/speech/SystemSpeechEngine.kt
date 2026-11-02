@@ -132,7 +132,16 @@ class SystemSpeechEngine(
         stopping = false
         active = true
         onListening(true)
-        startCycle(ticket)
+        try {
+            // A new user recording gets a new callback binder so an earlier recording
+            // cannot deliver delayed words through this recording's listener.
+            recognizer?.destroy()
+            recognizer = if (onDeviceOnly) {
+                if (Build.VERSION.SDK_INT < 31) throw UnsupportedOperationException("On-device recognition requires Android12")
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
+            } else SpeechRecognizer.createSpeechRecognizer(appContext)
+            startCycle(ticket)
+        } catch (_: Exception) { fail("سرویس گفتار گوشی آماده نشد") }
     } }
 
     override fun stop() { main.post {
@@ -203,6 +212,9 @@ class SystemSpeechEngine(
             SystemSpeechAction.RETRY -> {
                 val delay = retryDelayMs
                 retryDelayMs = (retryDelayMs * 2).coerceAtMost(2000L)
+                // A watchdog can expire without a terminal provider callback. End that
+                // outstanding request before starting the next one on the same binding.
+                runCatching { recognizer?.cancel() }
                 restart(ticket, delay)
             }
             SystemSpeechAction.STOP, SystemSpeechAction.FALLBACK -> fail(message)
