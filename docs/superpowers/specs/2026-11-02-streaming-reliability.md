@@ -1,0 +1,9 @@
+# Continuous device speech reliability
+
+The user reports slow live transcription and an error once a page fills. Exact on-phone error text is unavailable; do not assert a particular provider error as proven. Existing release3885100 only tested injected draft updates, not the real RecognitionService callback lifecycle.
+
+Observed code issues: formatting requests explicitly favor quality over latency; every stable callback sends the entire accumulated transcript through Nano and local punctuation; per-word regexes compile repeatedly on the UI callback path; recoverable speech errors restart without committing the visible partial; normal retry cycles reuse the same listener ticket.
+
+Keep live text immediate and independent from optional editing. Request latency-optimized phone formatting. Bound optional stable editing to a recent word-aligned tail (80 words,1200 UTF16 code units), keep the prefix intact, keep all source words/names/numbers and reject unsafe model rewrites. Reuse compiled cleanup patterns without changing normalization outputs. Make retryable no-match/timeout/busy/transient provider failures bounded, preserve partial words, reject callbacks from retired cycles, and keep stop/clear/background cancellation authoritative. Never silently switch a private recognizer to an online factory. Show provider error codes for actionable failures without recording audio or sending diagnostics.
+
+Validate through an actual Android RecognitionService fixture, including partials, several final/restart cycles, interrupted partials and stale callbacks; this does not claim real Google network latency or device Nano inference was tested. Preserve approved branding, app name امروز, existing diary data and signing key. Deliver version2.3.3/code43 APKs for installed preview.hotfix and production IDs.
