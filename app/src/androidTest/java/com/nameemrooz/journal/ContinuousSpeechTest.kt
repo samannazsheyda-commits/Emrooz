@@ -85,36 +85,3 @@ class ContinuousSpeechTest {
         assertEquals("Late callbacks after Stop must be ignored",settled,texts.last())
     }
 }
-
-private object StreamingScript {
-    var mode="normal";var cycle=0;var format=""
-}
-class StreamingScriptReceiver:BroadcastReceiver(){
-    override fun onReceive(context:Context?,intent:Intent?){
-        if(intent?.getStringExtra("action")=="configure"){StreamingScript.mode=intent.getStringExtra("mode")?:"normal";StreamingScript.cycle=0;StreamingScript.format=""}
-        setResultExtras(Bundle().apply{putString("format",StreamingScript.format);putInt("cycles",StreamingScript.cycle)})
-    }
-}
-class StreamingRecognitionService:RecognitionService(){
-    private val main=Handler(Looper.getMainLooper())
-    override fun onStartListening(intent:Intent?,callback:Callback?){
-        val cb=callback?:return
-        StreamingScript.format=intent?.getStringExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING).orEmpty()
-        val cycle=++StreamingScript.cycle
-        val value=when(StreamingScript.mode){
-            "interrupted" -> listOf("بخش نخست","بخش دوم","بخش سوم","نتیجه نهایی").getOrElse(cycle-1){"ادامه نوشته"}
-            "long" -> "این بخش از یک یادداشت طولانی است و باید بدون توقف حفظ شود ".repeat(3)+"پایان بخش "+persianNumber(cycle)
-            else -> "امروز با میثم قدم زدم"
-        }
-        fun bundle()=Bundle().apply{putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION,arrayListOf(value))}
-        cb.readyForSpeech(Bundle());cb.beginningOfSpeech()
-        main.postDelayed({runCatching{cb.partialResults(bundle())}},25)
-        main.postDelayed({runCatching{
-            if(StreamingScript.mode=="interrupted" && cycle<=3)cb.error(SpeechRecognizer.ERROR_NO_MATCH)
-            else cb.results(bundle())
-        }},75)
-    }
-    override fun onStopListening(callback:Callback?){main.postDelayed({runCatching{callback?.error(SpeechRecognizer.ERROR_CLIENT)}},30)}
-    override fun onCancel(callback:Callback?)=Unit
-    private fun persianNumber(value:Int)=value.toString().map{if(it in '0'..'9')'۰'+(it-'0')else it}.joinToString("")
-}
