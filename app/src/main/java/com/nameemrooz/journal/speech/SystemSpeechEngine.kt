@@ -155,13 +155,9 @@ class SystemSpeechEngine(
         val run = ++cycle
         cycleRunning = true
         try {
-            // Each native utterance gets its own callback binder. Retired binders cannot
-            // accidentally deliver a late error through the next cycle's listener.
-            recognizer?.destroy()
-            recognizer = if (onDeviceOnly) {
-                if (Build.VERSION.SDK_INT < 31) throw UnsupportedOperationException("On-device recognition requires Android12")
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
-            } else SpeechRecognizer.createSpeechRecognizer(appContext)
+            // Keep the native service binding for a recording. Destroying/rebinding
+            // after every utterance can disconnect the next Android 15 session (11).
+            // Session/cycle leases still reject callbacks received between cycles.
             recognizer?.setRecognitionListener(listener(ticket, run))
             recognizer?.startListening(recognizerIntent()) ?: error("Recognizer unavailable")
             armWatchdog(ticket, run, 12_000L)

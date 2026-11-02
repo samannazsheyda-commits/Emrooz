@@ -9,20 +9,7 @@ concurrency:
   group: emrooz-streaming-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  retire-stalled-diagnostics:
-    runs-on: ubuntu-24.04
-    permissions:
-      actions: write
-    steps:
-      - name: Stop the previous diagnostic process waiting for a shut-down emulator
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for run_id in 41428904014 41431195207; do
-            curl --fail --silent --show-error --max-time 20 -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/runs/$run_id/force-cancel" || true
-          done
   verify:
-    needs: retire-stalled-diagnostics
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
