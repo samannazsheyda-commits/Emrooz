@@ -9,7 +9,18 @@ concurrency:
   group: emrooz-streaming-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  retire-stalled-diagnostics:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Stop the previous diagnostic process waiting for a shut-down emulator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --silent --show-error --max-time 20 -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/${{ github.repository }}/actions/runs/41428904014/force-cancel || true
   verify:
+    needs: retire-stalled-diagnostics
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -60,6 +71,14 @@ jobs:
           gradle --no-daemon -PemroozPreview -PemroozPreviewApplicationId=com.nameemrooz.journal.preview.hotfix :app:assembleRelease
           cp app/build/outputs/apk/release/app-release.apk out/Emrooz-2.3.3-Update-CI-arm64.apk
           python3 tools/verify-apk.py out/Emrooz-2.3.3-Update-CI-arm64.apk
+      - name: Preserve verified release builds before emulator tests
+        if: matrix.api == 35
+        uses: actions/upload-artifact@v4
+        with:
+          name: Emrooz-2.3.3-release-candidates
+          path: out/
+          retention-days: 30
+          compression-level: 0
       - name: Compile streaming instrumentation
         run: gradle --no-daemon -PemroozPreview -PemroozAbi=x86_64 :app:clean :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Enable KVM
@@ -77,12 +96,15 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 3072
           script: |
             adb shell settings put secure show_ime_with_hard_keyboard 1
-            gradle --no-daemon -Dorg.gradle.jvmargs='-Xmx1536m -Dfile.encoding=UTF-8' -PemroozPreview -PemroozAbi=x86_64 -Pandroid.testInstrumentationRunnerArguments.notClass=com.nameemrooz.journal.StoreAssetsTest :app:connectedDebugAndroidTest
+            mkdir -p out
+            result=0
+            timeout 600s gradle --no-daemon -Dorg.gradle.jvmargs='-Xmx1536m -Dfile.encoding=UTF-8' -PemroozPreview -PemroozAbi=x86_64 -Pandroid.testInstrumentationRunnerArguments.notClass=com.nameemrooz.journal.StoreAssetsTest :app:connectedDebugAndroidTest || result=$?
+            timeout 15s adb logcat -d >out/android-logcat.txt || true
+            exit "$result"
       - name: Retain Android diagnostics
         if: always()
         run: |
           mkdir -p out
-          adb logcat -d >out/android-logcat.txt || true
           python3 - <<'PY'
           from pathlib import Path
           for p in Path('app/build/outputs/androidTest-results').rglob('TEST-*.xml'):print(p.read_text()[:25000])

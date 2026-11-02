@@ -68,6 +68,19 @@ class ContinuousSpeechTest {
         while(!predicate() && SystemClock.uptimeMillis()<until)SystemClock.sleep(20)
         assertTrue("Speech pipeline did not meet its condition",predicate())
     }
+    // Active dictation continuously invalidates Compose. Use the accessibility action
+    // instead of asking Espresso to wait for a quiescent live recording first.
+    private fun clickLiveControl(label: String) {
+        fun find(node: android.view.accessibility.AccessibilityNodeInfo?): android.view.accessibility.AccessibilityNodeInfo? {
+            if (node == null) return null
+            if (node.contentDescription?.toString() == label || node.text?.toString() == label) return node
+            for (i in 0 until node.childCount) find(node.getChild(i))?.let { return it }
+            return null
+        }
+        var node=find(instrumentation.uiAutomation.rootInActiveWindow)
+        while(node != null && !node.isClickable) node=node.parent
+        assertTrue("Live control is not accessible: $label",node?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)==true)
+    }
     @Test fun live_requests_favor_low_latency_formatting() {
         val texts=CopyOnWriteArrayList<String>();val errors=CopyOnWriteArrayList<String>();val listening=AtomicBoolean()
         start("normal",texts,errors,listening)
@@ -111,9 +124,9 @@ class ContinuousSpeechTest {
                 runCatching { compose.onNodeWithContentDescription("شروع ضبط").assertIsEnabled();true }.getOrDefault(false)
             }
             compose.onNodeWithContentDescription("شروع ضبط").performClick()
-            compose.waitUntil(30_000){vm!!.draft.text.value.contains("۴۰")}
+            waitFor(30_000){vm!!.draft.text.value.contains("۴۰")}
             assertTrue(vm!!.draft.text.value.length>6000)
-            compose.onNodeWithContentDescription("توقف").performClick()
+            clickLiveControl("توقف")
             compose.waitUntil(5_000){compose.onAllNodesWithContentDescription("توقف").fetchSemanticsNodes().isEmpty()}
             compose.waitForIdle()
             val node=compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().first{it.config.contains(SemanticsProperties.VerticalScrollAxisRange)}
